@@ -1,0 +1,3 @@
+# Скопируйте этот файл в local.properties (без .example) и подставьте свой ключ.
+# local.properties НЕ коммитится в git (см. .gitignore) — так ключ не попадёт в историю репозитория.
+MAPKIT_API_KEY=your-yandex-mapkit-key-here

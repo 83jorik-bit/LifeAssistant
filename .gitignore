@@ -1,0 +1,18 @@
+# Секреты — никогда не коммитить
+local.properties
+
+# Gradle
+.gradle/
+/build/
+/app/build/
+.gradletasknamecache
+
+# Android Studio / IntelliJ
+*.iml
+.idea/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# macOS
+.DS_Store

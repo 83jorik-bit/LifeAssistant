@@ -1,0 +1,79 @@
+package com.lifenavigator.app.data.model
+
+/**
+ * Категория повседневных потребностей — используется и на карте, и в бюджете.
+ */
+enum class NeedCategory(val displayName: String, val emoji: String) {
+    PHARMACY("Аптеки", "💊"),
+    GROCERY("Продукты", "🛒"),
+    CLINIC("Клиники", "🏥"),
+    BEAUTY("Красота", "💇"),
+    PICKUP_POINT("Пункты выдачи", "📦"),
+    CAFE("Кафе", "☕"),
+    TRANSPORT("Транспорт", "🚌"),
+    SELF_DEVELOPMENT("Саморазвитие", "📚")
+}
+
+/**
+ * Точка на карте потребностей — поставщик услуги/товара рядом с пользователем.
+ */
+data class PlacePoint(
+    val id: String,
+    val name: String,
+    val category: NeedCategory,
+    val distanceKm: Double,
+    val rating: Double,
+    val reviewsCount: Int,
+    val onlinePaymentAvailable: Boolean,
+    val hasSubscriptionOption: Boolean,
+    val approxAvgCheckRub: Int,
+    val address: String,
+    val latitude: Double,
+    val longitude: Double
+)
+
+/**
+ * Статья бюджета пользователя.
+ */
+data class BudgetCategory(
+    val category: NeedCategory,
+    val monthlyLimitRub: Int,
+    val spentRub: Int
+) {
+    val progress: Float
+        get() = if (monthlyLimitRub == 0) 0f else (spentRub.toFloat() / monthlyLimitRub.toFloat()).coerceIn(0f, 1.5f)
+
+    val isOverLimit: Boolean
+        get() = spentRub > monthlyLimitRub
+}
+
+/**
+ * Периодичность списания подписки.
+ */
+enum class BillingCycle(val displayName: String) {
+    MONTHLY("Ежемесячно"),
+    EVERY_2_MONTHS("Раз в 2 месяца"),
+    YEARLY("Ежегодно")
+}
+
+/**
+ * Активная подписка / автоплатёж пользователя.
+ */
+data class Subscription(
+    val id: String,
+    val serviceName: String,
+    val category: NeedCategory,
+    val priceRub: Int,
+    val billingCycle: BillingCycle,
+    val nextChargeDaysLeft: Int,
+    val isActive: Boolean
+)
+
+/**
+ * Сообщение в чате с ИИ-помощником.
+ */
+data class AssistantMessage(
+    val id: String,
+    val text: String,
+    val isFromUser: Boolean
+)
