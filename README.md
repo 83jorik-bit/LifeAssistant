@@ -58,7 +58,6 @@ app/src/main/java/com/lifenavigator/app/
 в кабинете разработчика (developer.tech.yandex.ru), поскольку старый уже мог быть скомпрометирован.
 
 ### Первая публикация
-
 ```bash
 cd LifeNavigator
 git init
