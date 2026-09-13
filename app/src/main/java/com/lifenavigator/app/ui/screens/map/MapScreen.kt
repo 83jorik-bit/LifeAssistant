@@ -83,7 +83,6 @@ fun MapScreen(viewModel: MapViewModel = viewModel()) {
                 onClick = {
                     if (hasLocationPermission) {
                         userLocationLayer?.let {
-                            it.isHeadingEnabled = true
                             it.isVisible = true
                         }
                     } else {
@@ -173,7 +172,6 @@ private fun YandexMapView(
                 val locationLayer = MapKitFactory.getInstance()
                     .createUserLocationLayer(view.mapWindow)
                 locationLayer.isVisible = hasLocationPermission
-                locationLayer.isHeadingEnabled = true
                 onLocationLayerReady(locationLayer)
             }
         },
