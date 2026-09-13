@@ -10,8 +10,6 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        // Репозиторий Yandex MapKit SDK
-        maven { url = uri("https://maven.yandex.net/repository/maven-public/") }
     }
 }
 

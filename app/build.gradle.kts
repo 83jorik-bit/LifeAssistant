@@ -16,12 +16,12 @@ val mapkitApiKey: String = localProperties.getProperty("MAPKIT_API_KEY") ?: ""
 
 android {
     namespace = "com.lifenavigator.app"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.lifenavigator.app"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 35
         versionCode = 1
         versionName = "0.1.0-mvp"
 
@@ -60,7 +60,7 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.1")
 
     // Yandex MapKit SDK (нативные карты) + Google Play Services Location для геолокации
-    implementation("com.yandex.android:maps.mobile:4.9.1-lite")
+    implementation("com.yandex.android:maps.mobile:4.42.0-lite")
     implementation("com.google.android.gms:play-services-location:21.3.0")
     implementation("androidx.compose.runtime:runtime-livedata:1.6.8")
 
