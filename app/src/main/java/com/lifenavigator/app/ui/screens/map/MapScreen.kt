@@ -12,7 +12,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Straighten
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -179,10 +183,140 @@ fun MapScreen(viewModel: MapViewModel = viewModel()) {
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(state.filteredPlaces, key = { it.id }) { place ->
-                    PlaceCard(place)
+                    PlaceCard(place, onClick = { viewModel.selectPlace(place) })
                 }
             }
         }
+    }
+
+    state.selectedPlace?.let { place ->
+        PlaceDetailsSheet(
+            place = place,
+            userPoint = state.userPoint,
+            onDismiss = { viewModel.dismissPlaceDetails() }
+        )
+    }
+}
+
+/**
+ * Карточка места: то, что MapKit отдаёт напрямую (рейтинг, часы, телефон),
+ * плюс кнопки перехода в Яндекс Карты за маршрутом и отзывами.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PlaceDetailsSheet(
+    place: PlacePoint,
+    userPoint: Point?,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 32.dp)
+        ) {
+            Text(
+                "${place.category.emoji} ${place.name}",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(Modifier.height(8.dp))
+
+            if (place.rating > 0) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Filled.Star,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.secondary
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        String.format("%.1f", place.rating),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        buildString {
+                            if (place.ratingsCount > 0) append("${place.ratingsCount} оценок")
+                            if (place.reviewsCount > 0) {
+                                if (isNotEmpty()) append(" · ")
+                                append("${place.reviewsCount} отзывов")
+                            }
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Spacer(Modifier.height(12.dp))
+            }
+
+            DetailRow(Icons.Filled.Place, place.address.ifBlank { "Адрес не указан" })
+            DetailRow(Icons.Filled.Straighten, "${place.distanceKm} км от вас")
+            place.workingHours?.takeIf { it.isNotBlank() }?.let {
+                DetailRow(Icons.Filled.Schedule, it)
+            }
+            place.phone?.takeIf { it.isNotBlank() }?.let {
+                DetailRow(Icons.Filled.Phone, it)
+            }
+
+            Spacer(Modifier.height(20.dp))
+
+            Text("Как добраться", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                YandexMapsLauncher.RouteType.entries.forEach { type ->
+                    Button(
+                        onClick = { YandexMapsLauncher.buildRoute(context, userPoint, place, type) },
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 10.dp)
+                    ) {
+                        Text(type.title, style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            OutlinedButton(
+                onClick = { YandexMapsLauncher.openPlaceCard(context, place) },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Отзывы и фото в Яндекс Картах")
+            }
+
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Тексты отзывов и фотографии MapKit SDK не передаёт — их можно посмотреть " +
+                    "в приложении Яндекс Карты по кнопке выше.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun DetailRow(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            modifier = Modifier.size(18.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.width(10.dp))
+        Text(text, style = MaterialTheme.typography.bodyMedium)
     }
 }
 
@@ -258,9 +392,13 @@ private fun renderPlaceMarkers(context: Context, collection: MapObjectCollection
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PlaceCard(place: PlacePoint) {
-    Card(Modifier.fillMaxWidth()) {
+private fun PlaceCard(place: PlacePoint, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onClick
+    ) {
         Column(Modifier.padding(12.dp)) {
             Row(
                 Modifier.fillMaxWidth(),

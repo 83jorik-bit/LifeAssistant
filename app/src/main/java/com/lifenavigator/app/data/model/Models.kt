@@ -29,7 +29,15 @@ data class PlacePoint(
     val approxAvgCheckRub: Int,
     val address: String,
     val latitude: Double,
-    val longitude: Double
+    val longitude: Double,
+    /** Количество оценок (рейтинг приходит в поле [rating]). 0 — данных нет. */
+    val ratingsCount: Int = 0,
+    /** Часы работы одной строкой, как их отдаёт Яндекс ("ежедневно, 9:00–21:00"). */
+    val workingHours: String? = null,
+    /** Телефон в человекочитаемом виде. */
+    val phone: String? = null,
+    /** Идентификатор организации в Яндекс Картах — нужен, чтобы открыть её карточку. */
+    val yandexOid: String? = null
 )
 
 /**
