@@ -1,6 +1,7 @@
 package com.lifenavigator.app.ui.screens.map
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
@@ -176,7 +177,7 @@ private fun YandexMapView(
             }
         },
         update = { view ->
-            renderPlaceMarkers(view.map.mapObjects, places)
+            renderPlaceMarkers(view.context, view.map.mapObjects, places)
         }
     )
 
@@ -207,9 +208,9 @@ private fun YandexMapView(
     }
 }
 
-private fun renderPlaceMarkers(collection: MapObjectCollection, places: List<PlacePoint>) {
+private fun renderPlaceMarkers(context: Context, collection: MapObjectCollection, places: List<PlacePoint>) {
     collection.clear()
-    val icon = ImageProvider.fromResource(null, R.drawable.ic_map_marker)
+    val icon = ImageProvider.fromResource(context, R.drawable.ic_map_marker)
     places.forEach { place ->
         val placemark = collection.addPlacemark(Point(place.latitude, place.longitude), icon)
         placemark.setText(place.name)
