@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.LocalTaxi
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Place
@@ -269,16 +270,33 @@ private fun PlaceDetailsSheet(
 
             Text("Как добраться", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                YandexMapsLauncher.RouteType.entries.forEach { type ->
-                    Button(
-                        onClick = { YandexMapsLauncher.buildRoute(context, userPoint, place, type) },
-                        modifier = Modifier.weight(1f),
-                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 10.dp)
-                    ) {
-                        Text(type.title, style = MaterialTheme.typography.labelMedium)
+
+            // Четыре режима Яндекс Карт в две строки — в одну строку подписи не помещаются.
+            YandexMapsLauncher.RouteType.entries.chunked(2).forEach { row ->
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    row.forEach { type ->
+                        Button(
+                            onClick = { YandexMapsLauncher.buildRoute(context, userPoint, place, type) },
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)
+                        ) {
+                            Text(type.title, style = MaterialTheme.typography.labelLarge)
+                        }
                     }
                 }
+                Spacer(Modifier.height(8.dp))
+            }
+
+            FilledTonalButton(
+                onClick = { YandexMapsLauncher.orderTaxi(context, userPoint, place) },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Filled.LocalTaxi, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Вызвать такси")
             }
 
             Spacer(Modifier.height(12.dp))
@@ -387,8 +405,11 @@ private fun renderPlaceMarkers(context: Context, collection: MapObjectCollection
     collection.clear()
     val icon = ImageProvider.fromResource(context, R.drawable.ic_map_marker)
     places.forEach { place ->
-        val placemark = collection.addPlacemark(Point(place.latitude, place.longitude), icon)
-        placemark.setText(place.name)
+        // Подписи под метками намеренно не ставим: на карте Яндекса уже есть свои названия
+        // организаций, и наши дубли только загромождали картинку. Наши точки выделяются
+        // самой меткой (контрастный пин с белой обводкой — см. ic_map_marker.xml),
+        // а название видно в списке ниже и в карточке по тапу.
+        collection.addPlacemark(Point(place.latitude, place.longitude), icon)
     }
 }
 
@@ -421,7 +442,11 @@ private fun PlaceCard(place: PlacePoint, onClick: () -> Unit) {
                 if (place.rating > 0) {
                     Icon(Icons.Filled.Star, contentDescription = null, modifier = Modifier.size(14.dp))
                     Spacer(Modifier.width(2.dp))
-                    Text("${place.rating} (${place.reviewsCount})", style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        String.format("%.1f", place.rating) +
+                            if (place.reviewsCount > 0) " (${place.reviewsCount})" else "",
+                        style = MaterialTheme.typography.bodySmall
+                    )
                     Spacer(Modifier.width(12.dp))
                 }
                 if (place.onlinePaymentAvailable) {

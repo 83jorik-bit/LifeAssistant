@@ -29,6 +29,20 @@ android {
         buildConfigField("String", "MAPKIT_API_KEY", "\"$mapkitApiKey\"")
     }
 
+    // Постоянный ключ подписи для debug-сборок.
+    // Без него Gradle подписывает каждую сборку локальным ~/.android/debug.keystore,
+    // который на вашем компьютере и на раннере GitHub Actions разный — из-за этого
+    // Android отказывается ставить новую версию поверх старой ("signatures do not match")
+    // и приложение приходится удалять. С общим ключом обновления просто накатываются.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = rootProject.file("keystore/lifenavigator-debug.keystore")
+            storePassword = "lifenavigator"
+            keyAlias = "lifenavigator"
+            keyPassword = "lifenavigator"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false

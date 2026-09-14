@@ -20,11 +20,51 @@ import com.yandex.mapkit.geometry.Point
  */
 object YandexMapsLauncher {
 
-    /** Типы маршрута, которые понимает приложение Яндекс Карт. */
+    /**
+     * Типы маршрута, которые передаются в приложение Яндекс Карт параметром `rtt`.
+     *
+     * ВНИМАНИЕ про самокат: в официальной документации URL-схемы перечислены только
+     * `auto`, `mt` и `pd`. Значение для самоката там не описано — `sc` взято по аналогии
+     * и НЕ проверено. Если приложение откроет маршрут не в том режиме, значит код другой:
+     * по документации при нераспознанном `rtt` используется режим из прошлой сессии.
+     * Такси сюда не входит — оно уходит в Яндекс Go отдельной ссылкой (см. [orderTaxi]).
+     */
     enum class RouteType(val code: String, val title: String) {
-        AUTO("auto", "На машине"),
-        PUBLIC_TRANSPORT("mt", "На транспорте"),
-        WALK("pd", "Пешком")
+        AUTO("auto", "Машина"),
+        PUBLIC_TRANSPORT("mt", "Транспорт"),
+        WALK("pd", "Пешком"),
+        SCOOTER("sc", "Самокат")
+    }
+
+    /**
+     * Заказ такси через Яндекс Go по официальному диплинку.
+     * Если приложение Go не установлено, ссылка сама уводит на его страницу в магазине.
+     */
+    fun orderTaxi(context: Context, from: Point?, place: PlacePoint) {
+        if (from == null) {
+            Toast.makeText(
+                context,
+                "Сначала определите своё местоположение — кнопка с прицелом на карте",
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+
+        val url = buildString {
+            append("https://3.redirect.appmetrica.yandex.com/route")
+            append("?start-lat=${from.latitude}&start-lon=${from.longitude}")
+            append("&end-lat=${place.latitude}&end-lon=${place.longitude}")
+            append("&ref=lifenavigator")
+            // Идентификатор из документации Яндекс Go: если приложение не установлено,
+            // пользователь попадёт на его страницу в магазине приложений.
+            append("&appmetrica_tracking_id=1178268795219780156")
+        }
+
+        try {
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        } catch (e: ActivityNotFoundException) {
+            Toast.makeText(context, "Не нашлось приложения, чтобы открыть ссылку", Toast.LENGTH_LONG).show()
+        }
     }
 
     /**
