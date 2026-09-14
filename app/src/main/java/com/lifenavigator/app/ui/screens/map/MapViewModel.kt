@@ -5,6 +5,10 @@ import androidx.lifecycle.viewModelScope
 import com.lifenavigator.app.data.model.NeedCategory
 import com.lifenavigator.app.data.model.PlacePoint
 import com.lifenavigator.app.data.repository.MockRepository
+import com.lifenavigator.app.data.repository.YandexSearchRepository
+import com.yandex.mapkit.geometry.Point
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -12,6 +16,7 @@ import kotlinx.coroutines.launch
 
 data class MapUiState(
     val isLoading: Boolean = true,
+    val isRefreshingRealData: Boolean = false,
     val places: List<PlacePoint> = emptyList(),
     val selectedCategory: NeedCategory? = null,
     val onlyOnlinePayment: Boolean = false
@@ -23,12 +28,23 @@ data class MapUiState(
             .sortedBy { it.distanceKm }
 }
 
+private val SEARCHABLE_CATEGORIES = listOf(
+    NeedCategory.PHARMACY,
+    NeedCategory.GROCERY,
+    NeedCategory.CLINIC,
+    NeedCategory.BEAUTY,
+    NeedCategory.PICKUP_POINT,
+    NeedCategory.CAFE
+)
+
 class MapViewModel : ViewModel() {
     private val _uiState = MutableStateFlow(MapUiState())
     val uiState: StateFlow<MapUiState> = _uiState
 
     init {
         viewModelScope.launch {
+            // Показываем тестовые данные сразу, не дожидаясь геолокации и сети —
+            // как только придут реальные точки (loadRealPlacesNear), они их заменят.
             val places = MockRepository.getNearbyPlaces()
             _uiState.update { it.copy(places = places, isLoading = false) }
         }
@@ -41,4 +57,32 @@ class MapViewModel : ViewModel() {
     fun toggleOnlinePaymentFilter() {
         _uiState.update { it.copy(onlyOnlinePayment = !it.onlyOnlinePayment) }
     }
+
+    /**
+     * Подтягивает настоящие организации рядом с [userPoint] через MapKit Search
+     * и заменяет ими текущий список точек. Вызывается, когда становятся известны
+     * реальные координаты пользователя (при старте с уже выданным разрешением
+     * и при каждом нажатии на кнопку "моя геолокация").
+     */
+    fun loadRealPlacesNear(userPoint: Point) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isRefreshingRealData = true) }
+
+            val results = SEARCHABLE_CATEGORIES
+                .map { category -> async { YandexSearchRepository.searchCategory(userPoint, category) } }
+                .awaitAll()
+                .flatten()
+
+            _uiState.update { state ->
+                if (results.isNotEmpty()) {
+                    state.copy(places = results, isRefreshingRealData = false)
+                } else {
+                    // Поиск не дал результатов (нет сети, пустая выдача и т.п.) —
+                    // оставляем то, что уже показано, чтобы экран не опустел.
+                    state.copy(isRefreshingRealData = false)
+                }
+            }
+        }
+    }
 }
+

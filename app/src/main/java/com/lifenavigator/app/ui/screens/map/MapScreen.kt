@@ -1,6 +1,7 @@
 package com.lifenavigator.app.ui.screens.map
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.widget.Toast
@@ -27,9 +28,13 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
+import com.google.android.gms.tasks.CancellationTokenSource
 import com.lifenavigator.app.R
 import com.lifenavigator.app.data.model.NeedCategory
 import com.lifenavigator.app.data.model.PlacePoint
+import com.yandex.mapkit.Animation
 import com.yandex.mapkit.MapKitFactory
 import com.yandex.mapkit.geometry.Point
 import com.yandex.mapkit.map.CameraPosition
@@ -40,11 +45,13 @@ import com.yandex.runtime.image.ImageProvider
 
 private val MOSCOW_CENTER = Point(55.7530, 37.6215)
 
+@SuppressLint("MissingPermission") // проверка разрешения выполняется через hasLocationPermission перед вызовом
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MapScreen(viewModel: MapViewModel = viewModel()) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+    val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
 
     var hasLocationPermission by remember {
         mutableStateOf(
@@ -52,15 +59,48 @@ fun MapScreen(viewModel: MapViewModel = viewModel()) {
                 PackageManager.PERMISSION_GRANTED
         )
     }
-    // Держим ссылку на слой геолокации, чтобы кнопка "моя геолокация" могла им управлять.
+    // Держим ссылки на слой геолокации и сам MapView, чтобы кнопка "моя геолокация" могла ими управлять.
     var userLocationLayer by remember { mutableStateOf<UserLocationLayer?>(null) }
+    var mapViewRef by remember { mutableStateOf<MapView?>(null) }
+
+    // Запрашивает текущие координаты, плавно перемещает камеру к ним
+    // и подтягивает реальные точки рядом (вместо тестовых данных).
+    val centerOnUser: () -> Unit = {
+        userLocationLayer?.isVisible = true
+        val cancellationTokenSource = CancellationTokenSource()
+        fusedLocationClient.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, cancellationTokenSource.token)
+            .addOnSuccessListener { location ->
+                if (location != null) {
+                    val userPoint = Point(location.latitude, location.longitude)
+                    mapViewRef?.map?.move(
+                        CameraPosition(userPoint, 16f, 0f, 0f),
+                        Animation(Animation.Type.SMOOTH, 0.5f),
+                        null
+                    )
+                    viewModel.loadRealPlacesNear(userPoint)
+                } else {
+                    Toast.makeText(context, "Не удалось определить местоположение — проверьте, включена ли геолокация в системе", Toast.LENGTH_LONG).show()
+                }
+            }
+    }
+
+    // Если разрешение уже выдано раньше — сразу подтягиваем реальные точки при открытии экрана,
+    // не дожидаясь нажатия на кнопку "моя геолокация". Ждём, пока карта реально смонтируется
+    // (mapViewRef появится чуть позже первого кадра), иначе центрирование камеры не сработает.
+    var hasAutoLoaded by remember { mutableStateOf(false) }
+    LaunchedEffect(mapViewRef, hasLocationPermission) {
+        if (!hasAutoLoaded && hasLocationPermission && mapViewRef != null) {
+            hasAutoLoaded = true
+            centerOnUser()
+        }
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         hasLocationPermission = granted
         if (granted) {
-            userLocationLayer?.isVisible = true
+            centerOnUser()
         } else {
             Toast.makeText(context, "Без доступа к геолокации карта покажет только точки, без «где я»", Toast.LENGTH_LONG).show()
         }
@@ -77,15 +117,14 @@ fun MapScreen(viewModel: MapViewModel = viewModel()) {
             YandexMapView(
                 places = state.filteredPlaces,
                 hasLocationPermission = hasLocationPermission,
-                onLocationLayerReady = { layer -> userLocationLayer = layer }
+                onLocationLayerReady = { layer -> userLocationLayer = layer },
+                onMapViewReady = { view -> mapViewRef = view }
             )
 
             FloatingActionButton(
                 onClick = {
                     if (hasLocationPermission) {
-                        userLocationLayer?.let {
-                            it.isVisible = true
-                        }
+                        centerOnUser()
                     } else {
                         permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
                     }
@@ -156,7 +195,8 @@ fun MapScreen(viewModel: MapViewModel = viewModel()) {
 private fun YandexMapView(
     places: List<PlacePoint>,
     hasLocationPermission: Boolean,
-    onLocationLayerReady: (UserLocationLayer) -> Unit
+    onLocationLayerReady: (UserLocationLayer) -> Unit,
+    onMapViewReady: (MapView) -> Unit
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val mapView = remember { mutableStateOf<MapView?>(null) }
@@ -174,6 +214,7 @@ private fun YandexMapView(
                     .createUserLocationLayer(view.mapWindow)
                 locationLayer.isVisible = hasLocationPermission
                 onLocationLayerReady(locationLayer)
+                onMapViewReady(view)
             }
         },
         update = { view ->
@@ -239,11 +280,12 @@ private fun PlaceCard(place: PlacePoint) {
 
             Spacer(Modifier.height(6.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.Star, contentDescription = null, modifier = Modifier.size(14.dp))
-                Spacer(Modifier.width(2.dp))
-                Text("${place.rating} (${place.reviewsCount})", style = MaterialTheme.typography.bodySmall)
-
-                Spacer(Modifier.width(12.dp))
+                if (place.rating > 0) {
+                    Icon(Icons.Filled.Star, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(2.dp))
+                    Text("${place.rating} (${place.reviewsCount})", style = MaterialTheme.typography.bodySmall)
+                    Spacer(Modifier.width(12.dp))
+                }
                 if (place.onlinePaymentAvailable) {
                     AssistChip(onClick = {}, label = { Text("Онлайн-оплата", style = MaterialTheme.typography.labelSmall) })
                 }
