@@ -7,6 +7,7 @@ import com.yandex.mapkit.geometry.BoundingBox
 import com.yandex.mapkit.geometry.Geometry
 import com.yandex.mapkit.geometry.Point
 import com.yandex.mapkit.search.BusinessObjectMetadata
+import com.yandex.mapkit.search.BusinessRating1xObjectMetadata
 import com.yandex.mapkit.search.Response
 import com.yandex.mapkit.search.SearchFactory
 import com.yandex.mapkit.search.SearchManager
@@ -32,6 +33,15 @@ import kotlin.math.sqrt
  * Поэтому на каждую категорию — свой запрос.
  */
 object YandexSearchRepository {
+
+    /**
+     * Битовая маска сниппета с рейтингом организации (BusinessRating1x).
+     * Значение 1 shl 1 задокументировано Яндексом одинаково для всех платформ.
+     * Использую число, а не константу перечисления Snippet, потому что точное имя
+     * константы в Android-версии SDK мне подтвердить не удалось — документация
+     * справочника по Android не открылась, а гадать с именем не хочу.
+     */
+    private const val SNIPPET_BUSINESS_RATING_1X = 1 shl 1
 
     private val searchManager: SearchManager by lazy {
         // ONLINE выбран потому, что офлайн-карты мы нигде не скачиваем, и искать
@@ -73,6 +83,8 @@ object YandexSearchRepository {
                 searchTypes = SearchType.BIZ.value
                 resultPageSize = 10
                 userPosition = userPoint
+                // Рейтинг — это "сниппет": без явного запроса MapKit его просто не пришлёт.
+                snippets = SNIPPET_BUSINESS_RATING_1X
             }
 
             lateinit var session: Session
@@ -136,20 +148,26 @@ object YandexSearchRepository {
     private fun GeoObject.toPlacePoint(category: NeedCategory, userPoint: Point, index: Int): PlacePoint? {
         val point = geometry.firstOrNull()?.point ?: return null
         val metadata = metadataContainer.getItem(BusinessObjectMetadata::class.java)
+        // Рейтинг приходит отдельным сниппетом, а не внутри BusinessObjectMetadata.
+        val rating = metadataContainer.getItem(BusinessRating1xObjectMetadata::class.java)
 
         return PlacePoint(
             id = "search-${category.name}-$index-${point.latitude}-${point.longitude}",
             name = name ?: metadata?.name ?: "Без названия",
             category = category,
             distanceKm = roundToOneDecimal(haversineKm(userPoint, point)),
-            rating = 0.0, // реальный рейтинг MapKit Search не отдаёт в стандартных полях — не додумываем
-            reviewsCount = 0,
+            rating = rating?.score?.toDouble() ?: 0.0,
+            reviewsCount = rating?.reviews ?: 0,
             onlinePaymentAvailable = false, // MapKit не даёт этот признак напрямую
             hasSubscriptionOption = false,
             approxAvgCheckRub = 0,
             address = metadata?.address?.formattedAddress ?: "",
             latitude = point.latitude,
-            longitude = point.longitude
+            longitude = point.longitude,
+            ratingsCount = rating?.ratings ?: 0,
+            workingHours = metadata?.workingHours?.text,
+            phone = metadata?.phones?.firstOrNull()?.formattedNumber,
+            yandexOid = metadata?.oid
         )
     }
 

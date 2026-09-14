@@ -19,7 +19,11 @@ data class MapUiState(
     val isRefreshingRealData: Boolean = false,
     val places: List<PlacePoint> = emptyList(),
     val selectedCategory: NeedCategory? = null,
-    val onlyOnlinePayment: Boolean = false
+    val onlyOnlinePayment: Boolean = false,
+    /** Последние известные координаты пользователя — нужны как начало маршрута. */
+    val userPoint: Point? = null,
+    /** Место, карточка которого сейчас открыта. null — карточка закрыта. */
+    val selectedPlace: PlacePoint? = null
 ) {
     val filteredPlaces: List<PlacePoint>
         get() = places
@@ -58,6 +62,14 @@ class MapViewModel : ViewModel() {
         _uiState.update { it.copy(onlyOnlinePayment = !it.onlyOnlinePayment) }
     }
 
+    fun selectPlace(place: PlacePoint) {
+        _uiState.update { it.copy(selectedPlace = place) }
+    }
+
+    fun dismissPlaceDetails() {
+        _uiState.update { it.copy(selectedPlace = null) }
+    }
+
     /**
      * Подтягивает настоящие организации рядом с [userPoint] через MapKit Search
      * и заменяет ими текущий список точек. Вызывается, когда становятся известны
@@ -66,7 +78,7 @@ class MapViewModel : ViewModel() {
      */
     fun loadRealPlacesNear(userPoint: Point) {
         viewModelScope.launch {
-            _uiState.update { it.copy(isRefreshingRealData = true) }
+            _uiState.update { it.copy(isRefreshingRealData = true, userPoint = userPoint) }
 
             val results = SEARCHABLE_CATEGORIES
                 .map { category -> async { YandexSearchRepository.searchCategory(userPoint, category) } }
