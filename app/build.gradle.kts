@@ -57,7 +57,8 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.1")
 
     // Yandex MapKit SDK (нативные карты) + Google Play Services Location для геолокации
-    implementation("com.yandex.android:maps.mobile:4.42.0-lite")
+    // Full-версия: даёт карту + поиск по организациям, геокодирование, маршрутизацию (нужно для реальных точек).
+    implementation("com.yandex.android:maps.mobile:4.42.0-full")
     implementation("com.google.android.gms:play-services-location:21.3.0")
     implementation("androidx.compose.runtime:runtime-livedata:1.6.8")
 
