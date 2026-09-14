@@ -37,7 +37,9 @@ data class PlacePoint(
     /** Телефон в человекочитаемом виде. */
     val phone: String? = null,
     /** Идентификатор организации в Яндекс Картах — нужен, чтобы открыть её карточку. */
-    val yandexOid: String? = null
+    val yandexOid: String? = null,
+    /** Рубрики Яндекса одной строкой: «Магазин продуктов», «Парикмахерская, Ногтевая студия». */
+    val categoryDescription: String? = null
 )
 
 /**

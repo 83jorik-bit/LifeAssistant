@@ -50,6 +50,18 @@ import com.yandex.runtime.image.ImageProvider
 
 private val MOSCOW_CENTER = Point(55.7530, 37.6215)
 
+/**
+ * Стиль карты: прячем чужие точки интереса (магазины, кафе, клиники и т. д.),
+ * чтобы на карте остались только те места, что показаны в списке под ней.
+ *
+ * Подложка — дороги, дома, названия улиц и районов — остаётся нетронутой:
+ * выключается только слой `poi`. Если понадобится убрать что-то ещё
+ * (например значки транспорта), сюда же добавляется тег `transit`.
+ * Формат описан в документации MapKit «Стили карты».
+ */
+private const val HIDE_POI_STYLE =
+    """[{"types":"point","tags":{"all":["poi"]},"stylers":{"visibility":"off"}}]"""
+
 @SuppressLint("MissingPermission") // проверка разрешения выполняется через hasLocationPermission перед вызовом
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -225,6 +237,15 @@ private fun PlaceDetailsSheet(
                 fontWeight = FontWeight.Bold
             )
 
+            place.categoryDescription?.takeIf { it.isNotBlank() }?.let {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
             Spacer(Modifier.height(8.dp))
 
             if (place.rating > 0) {
@@ -358,6 +379,7 @@ private fun YandexMapView(
         factory = { context ->
             MapView(context).also { view ->
                 mapView.value = view
+                view.map.setMapStyle(HIDE_POI_STYLE)
                 view.map.move(
                     CameraPosition(MOSCOW_CENTER, /* zoom = */ 13.5f, /* azimuth = */ 0f, /* tilt = */ 0f)
                 )
@@ -405,11 +427,10 @@ private fun renderPlaceMarkers(context: Context, collection: MapObjectCollection
     collection.clear()
     val icon = ImageProvider.fromResource(context, R.drawable.ic_map_marker)
     places.forEach { place ->
-        // Подписи под метками намеренно не ставим: на карте Яндекса уже есть свои названия
-        // организаций, и наши дубли только загромождали картинку. Наши точки выделяются
-        // самой меткой (контрастный пин с белой обводкой — см. ic_map_marker.xml),
-        // а название видно в списке ниже и в карточке по тапу.
-        collection.addPlacemark(Point(place.latitude, place.longitude), icon)
+        // Подписи вернули: раньше они дублировали названия самих Яндекс Карт, а теперь
+        // чужой слой poi скрыт (см. HIDE_POI_STYLE), и на карте подписаны только наши точки.
+        val placemark = collection.addPlacemark(Point(place.latitude, place.longitude), icon)
+        placemark.setText(place.name)
     }
 }
 
@@ -435,6 +456,14 @@ private fun PlaceCard(place: PlacePoint, onClick: () -> Unit) {
             }
 
             Spacer(Modifier.height(4.dp))
+            place.categoryDescription?.takeIf { it.isNotBlank() }?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(Modifier.height(2.dp))
+            }
             Text(place.address, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
             Spacer(Modifier.height(6.dp))

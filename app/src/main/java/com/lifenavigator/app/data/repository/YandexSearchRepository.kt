@@ -17,6 +17,9 @@ import com.yandex.mapkit.search.SearchType
 import com.yandex.mapkit.search.Session
 import com.yandex.runtime.Error
 import kotlin.coroutines.resume
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.math.asin
 import kotlin.math.cos
@@ -55,13 +58,21 @@ object YandexSearchRepository {
     private val activeSessions = mutableListOf<Session>()
     private val activeListeners = mutableListOf<Session.SearchListener>()
 
-    private val CATEGORY_QUERIES: Map<NeedCategory, String> = mapOf(
-        NeedCategory.PHARMACY to "аптека",
-        NeedCategory.GROCERY to "продуктовый магазин",
-        NeedCategory.CLINIC to "клиника",
-        NeedCategory.BEAUTY to "салон красоты",
-        NeedCategory.PICKUP_POINT to "пункт выдачи заказов",
-        NeedCategory.CAFE to "кафе"
+    /**
+     * На каждую категорию — несколько формулировок запроса.
+     *
+     * Почему так: поиск Яндекса текстовый, и одна формулировка выдаёт далеко не всё.
+     * По запросу «продуктовый магазин» сети вроде «Магнита» и «Пятёрочки» могут не попасть
+     * в первую страницу выдачи, а «кофе с собой» и маленькие пекарни не находятся по слову
+     * «кафе». Несколько запросов с объединением и удалением дублей закрывают эти пробелы.
+     */
+    private val CATEGORY_QUERIES: Map<NeedCategory, List<String>> = mapOf(
+        NeedCategory.PHARMACY to listOf("аптека"),
+        NeedCategory.GROCERY to listOf("продукты", "супермаркет", "магазин у дома"),
+        NeedCategory.CLINIC to listOf("клиника", "поликлиника", "медицинский центр"),
+        NeedCategory.BEAUTY to listOf("салон красоты", "парикмахерская"),
+        NeedCategory.PICKUP_POINT to listOf("пункт выдачи заказов", "постамат"),
+        NeedCategory.CAFE to listOf("кафе", "кофейня", "кофе с собой", "пекарня")
         // TRANSPORT и SELF_DEVELOPMENT сюда сознательно не включены — это скорее
         // категории бюджета/подписок, чем тип точки на карте (так же было и в моковых данных).
     )
@@ -76,12 +87,31 @@ object YandexSearchRepository {
         category: NeedCategory,
         radiusMeters: Float = 3000f
     ): List<PlacePoint> {
-        val query = CATEGORY_QUERIES[category] ?: return emptyList()
+        val queries = CATEGORY_QUERIES[category] ?: return emptyList()
 
+        return coroutineScope {
+            queries
+                .map { query -> async { runQuery(userPoint, category, query, radiusMeters) } }
+                .awaitAll()
+                .flatten()
+                // Одна организация попадает в выдачу сразу по нескольким формулировкам —
+                // убираем повторы (id строится на идентификаторе организации либо координатах).
+                .distinctBy { it.id }
+                .sortedBy { it.distanceKm }
+        }
+    }
+
+    private suspend fun runQuery(
+        userPoint: Point,
+        category: NeedCategory,
+        query: String,
+        radiusMeters: Float
+    ): List<PlacePoint> {
         return suspendCancellableCoroutine { continuation ->
             val searchOptions = SearchOptions().apply {
                 searchTypes = SearchType.BIZ.value
-                resultPageSize = 10
+                // Было 10 — из-за этого часть организаций просто не доезжала до списка.
+                resultPageSize = 30
                 userPosition = userPoint
                 // Рейтинг — это "сниппет": без явного запроса MapKit его просто не пришлёт.
                 snippets = SNIPPET_BUSINESS_RATING_1X
@@ -92,9 +122,7 @@ object YandexSearchRepository {
                 override fun onSearchResponse(response: Response) {
                     val places = response.collection.children
                         .mapNotNull { it.obj }
-                        .mapIndexedNotNull { index, geoObject ->
-                            geoObject.toPlacePoint(category, userPoint, index)
-                        }
+                        .mapNotNull { geoObject -> geoObject.toPlacePoint(category, userPoint) }
                     release(session, this)
                     if (continuation.isActive) continuation.resume(places)
                 }
@@ -145,14 +173,19 @@ object YandexSearchRepository {
         )
     }
 
-    private fun GeoObject.toPlacePoint(category: NeedCategory, userPoint: Point, index: Int): PlacePoint? {
+    private fun GeoObject.toPlacePoint(category: NeedCategory, userPoint: Point): PlacePoint? {
         val point = geometry.firstOrNull()?.point ?: return null
         val metadata = metadataContainer.getItem(BusinessObjectMetadata::class.java)
         // Рейтинг приходит отдельным сниппетом, а не внутри BusinessObjectMetadata.
         val rating = metadataContainer.getItem(BusinessRating1xObjectMetadata::class.java)
 
+        // Идентификатор организации — самый надёжный ключ для склейки дублей между запросами.
+        // Если его нет, опираемся на координаты.
+        val stableId = metadata?.oid?.takeIf { it.isNotBlank() }
+            ?: "${point.latitude},${point.longitude}"
+
         return PlacePoint(
-            id = "search-${category.name}-$index-${point.latitude}-${point.longitude}",
+            id = "yandex-$stableId",
             name = name ?: metadata?.name ?: "Без названия",
             category = category,
             distanceKm = roundToOneDecimal(haversineKm(userPoint, point)),
@@ -167,7 +200,11 @@ object YandexSearchRepository {
             ratingsCount = rating?.ratings ?: 0,
             workingHours = metadata?.workingHours?.text,
             phone = metadata?.phones?.firstOrNull()?.formattedNumber,
-            yandexOid = metadata?.oid
+            yandexOid = metadata?.oid,
+            categoryDescription = metadata?.categories
+                ?.mapNotNull { it.name }
+                ?.takeIf { it.isNotEmpty() }
+                ?.joinToString(", ")
         )
     }
 
