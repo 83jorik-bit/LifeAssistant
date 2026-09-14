@@ -34,7 +34,10 @@ import kotlin.math.sqrt
 object YandexSearchRepository {
 
     private val searchManager: SearchManager by lazy {
-        SearchFactory.getInstance().createSearchManager(SearchManagerType.COMBINED)
+        // ONLINE, а не COMBINED — COMBINED/OFFLINE недоступны на бесплатном тарифе MapKit
+        // и, судя по всему, приводят к падению нативной библиотеки, а не к чистой ошибке.
+        // Офлайн-карты мы всё равно нигде не скачиваем, так что ONLINE — правильный выбор и по смыслу.
+        SearchFactory.getInstance().createSearchManager(SearchManagerType.ONLINE)
     }
 
     // MapKit хранит только слабые ссылки на сессии/слушателей — держим их здесь,
