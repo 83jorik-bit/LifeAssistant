@@ -3,7 +3,7 @@ package com.lifenavigator.app.data.repository
 import com.lifenavigator.app.data.model.NeedCategory
 import com.lifenavigator.app.data.model.PlacePoint
 import com.yandex.mapkit.GeoObject
-import com.yandex.mapkit.geometry.Circle
+import com.yandex.mapkit.geometry.BoundingBox
 import com.yandex.mapkit.geometry.Geometry
 import com.yandex.mapkit.geometry.Point
 import com.yandex.mapkit.search.BusinessObjectMetadata
@@ -34,15 +34,16 @@ import kotlin.math.sqrt
 object YandexSearchRepository {
 
     private val searchManager: SearchManager by lazy {
-        // ONLINE, а не COMBINED — COMBINED/OFFLINE недоступны на бесплатном тарифе MapKit
-        // и, судя по всему, приводят к падению нативной библиотеки, а не к чистой ошибке.
-        // Офлайн-карты мы всё равно нигде не скачиваем, так что ONLINE — правильный выбор и по смыслу.
+        // ONLINE выбран потому, что офлайн-карты мы нигде не скачиваем, и искать
+        // в офлайн-кэше попросту не в чем. В документации в примерах используется COMBINED
+        // (онлайн + офлайн) — если понадобится офлайн-режим, менять нужно здесь.
         SearchFactory.getInstance().createSearchManager(SearchManagerType.ONLINE)
     }
 
-    // MapKit хранит только слабые ссылки на сессии/слушателей — держим их здесь,
+    // MapKit хранит только слабые ссылки на сессии и слушателей — держим их здесь,
     // иначе ответ может не дойти (сборщик мусора соберёт объект раньше времени).
     private val activeSessions = mutableListOf<Session>()
+    private val activeListeners = mutableListOf<Session.SearchListener>()
 
     private val CATEGORY_QUERIES: Map<NeedCategory, String> = mapOf(
         NeedCategory.PHARMACY to "аптека",
@@ -82,29 +83,54 @@ object YandexSearchRepository {
                         .mapIndexedNotNull { index, geoObject ->
                             geoObject.toPlacePoint(category, userPoint, index)
                         }
-                    activeSessions.remove(session)
+                    release(session, this)
                     if (continuation.isActive) continuation.resume(places)
                 }
 
                 override fun onSearchError(error: Error) {
-                    activeSessions.remove(session)
+                    release(session, this)
                     if (continuation.isActive) continuation.resume(emptyList())
                 }
             }
 
             session = searchManager.submit(
                 query,
-                Geometry.fromCircle(Circle(userPoint, radiusMeters)),
+                // ВАЖНО: поиск поддерживает только point, boundingBox, polyline и polygon.
+                // Circle в этот список не входит — передача круга роняет нативную библиотеку
+                // без внятной ошибки, поэтому радиус переводим в прямоугольник.
+                Geometry.fromBoundingBox(boundingBoxAround(userPoint, radiusMeters)),
                 searchOptions,
                 listener
             )
             activeSessions.add(session)
+            activeListeners.add(listener)
 
             continuation.invokeOnCancellation {
                 session.cancel()
-                activeSessions.remove(session)
+                release(session, listener)
             }
         }
+    }
+
+    private fun release(session: Session, listener: Session.SearchListener) {
+        activeSessions.remove(session)
+        activeListeners.remove(listener)
+    }
+
+    /**
+     * Переводит "радиус в метрах вокруг точки" в прямоугольник, который понимает поиск MapKit.
+     * Приблизительный расчёт: 1° широты ≈ 111 320 м, долгота сжимается пропорционально косинусу широты.
+     */
+    private fun boundingBoxAround(center: Point, radiusMeters: Float): BoundingBox {
+        val metersPerDegreeLat = 111_320.0
+        val latDelta = radiusMeters / metersPerDegreeLat
+        val lonScale = cos(Math.toRadians(center.latitude)).coerceAtLeast(0.000001)
+        val lonDelta = radiusMeters / (metersPerDegreeLat * lonScale)
+
+        return BoundingBox(
+            Point(center.latitude - latDelta, center.longitude - lonDelta),
+            Point(center.latitude + latDelta, center.longitude + lonDelta)
+        )
     }
 
     private fun GeoObject.toPlacePoint(category: NeedCategory, userPoint: Point, index: Int): PlacePoint? {
