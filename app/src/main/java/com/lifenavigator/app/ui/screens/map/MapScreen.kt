@@ -52,6 +52,7 @@ import com.yandex.mapkit.map.TextStyle
 import com.yandex.mapkit.mapview.MapView
 import com.yandex.mapkit.user_location.UserLocationLayer
 import com.yandex.runtime.image.ImageProvider
+import java.lang.ref.WeakReference
 
 private val MOSCOW_CENTER = Point(55.7530, 37.6215)
 
@@ -390,7 +391,10 @@ private fun YandexMapView(
                 view.map.move(
                     CameraPosition(MOSCOW_CENTER, /* zoom = */ 13.5f, /* azimuth = */ 0f, /* tilt = */ 0f)
                 )
-                view.map.addCameraListener(cameraListener)
+                // SDK принимает слушателя именно слабой ссылкой. Сильную ссылку держим
+                // в remember выше — без неё слушателя соберёт GC и подписи перестанут
+                // переключаться при зуме.
+                view.map.addCameraListener(WeakReference(cameraListener))
 
                 val locationLayer = MapKitFactory.getInstance()
                     .createUserLocationLayer(view.mapWindow)
