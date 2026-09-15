@@ -9,9 +9,20 @@ enum class NeedCategory(val displayName: String, val emoji: String) {
     CLINIC("Клиники", "🏥"),
     BEAUTY("Красота", "💇"),
     PICKUP_POINT("Пункты выдачи", "📦"),
-    CAFE("Кафе", "☕"),
-    TRANSPORT("Транспорт", "🚌"),
-    SELF_DEVELOPMENT("Саморазвитие", "📚")
+    CAFE("Кафе и рестораны", "☕"),
+    CLOTHING("Одежда и обувь", "👕"),
+    EDUCATION("Образование", "🎓"),
+    TRANSPORT("Транспорт", "🚌")
+}
+
+/**
+ * Способы оплаты, которые удалось распознать в данных Яндекса.
+ * Показываются иконками рядом с названием места.
+ */
+enum class PaymentMethod(val label: String) {
+    CARD("Картой"),
+    SBP("СБП"),
+    CASH("Наличными")
 }
 
 /**
@@ -39,7 +50,9 @@ data class PlacePoint(
     /** Идентификатор организации в Яндекс Картах — нужен, чтобы открыть её карточку. */
     val yandexOid: String? = null,
     /** Рубрики Яндекса одной строкой: «Магазин продуктов», «Парикмахерская, Ногтевая студия». */
-    val categoryDescription: String? = null
+    val categoryDescription: String? = null,
+    /** Распознанные способы оплаты (см. PaymentMethod). Пустое множество — данных нет. */
+    val paymentMethods: Set<PaymentMethod> = emptySet()
 )
 
 /**

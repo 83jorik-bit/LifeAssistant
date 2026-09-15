@@ -1,6 +1,7 @@
 package com.lifenavigator.app.data.repository
 
 import com.lifenavigator.app.data.model.NeedCategory
+import com.lifenavigator.app.data.model.PaymentMethod
 import com.lifenavigator.app.data.model.PlacePoint
 import com.yandex.mapkit.GeoObject
 import com.yandex.mapkit.geometry.BoundingBox
@@ -15,6 +16,7 @@ import com.yandex.mapkit.search.SearchManagerType
 import com.yandex.mapkit.search.SearchOptions
 import com.yandex.mapkit.search.SearchType
 import com.yandex.mapkit.search.Session
+import com.yandex.mapkit.search.ToponymObjectMetadata
 import com.yandex.runtime.Error
 import kotlin.coroutines.resume
 import kotlinx.coroutines.async
@@ -72,10 +74,22 @@ object YandexSearchRepository {
         NeedCategory.CLINIC to listOf("клиника", "поликлиника", "медицинский центр"),
         NeedCategory.BEAUTY to listOf("салон красоты", "парикмахерская"),
         NeedCategory.PICKUP_POINT to listOf("пункт выдачи заказов", "постамат"),
-        NeedCategory.CAFE to listOf("кафе", "кофейня", "кофе с собой", "пекарня")
-        // TRANSPORT и SELF_DEVELOPMENT сюда сознательно не включены — это скорее
-        // категории бюджета/подписок, чем тип точки на карте (так же было и в моковых данных).
+        NeedCategory.CAFE to listOf("кафе", "ресторан", "кофейня", "кофе с собой", "пекарня"),
+        NeedCategory.CLOTHING to listOf("магазин одежды", "обувной магазин"),
+        NeedCategory.EDUCATION to listOf("школа", "детский сад", "колледж", "курсы"),
+        NeedCategory.TRANSPORT to listOf("остановка общественного транспорта", "станция метро")
     )
+
+    /**
+     * Для остановок и станций метро ищем не только организации, но и топонимы:
+     * остановка — это объект карты, а не компания, и по типу BIZ она не находится.
+     */
+    private fun searchTypesFor(category: NeedCategory): Int =
+        if (category == NeedCategory.TRANSPORT) {
+            SearchType.GEO.value or SearchType.BIZ.value
+        } else {
+            SearchType.BIZ.value
+        }
 
     /**
      * Ищет реальные организации указанной категории в радиусе [radiusMeters] от [userPoint].
@@ -109,7 +123,7 @@ object YandexSearchRepository {
     ): List<PlacePoint> {
         return suspendCancellableCoroutine { continuation ->
             val searchOptions = SearchOptions().apply {
-                searchTypes = SearchType.BIZ.value
+                searchTypes = searchTypesFor(category)
                 // Было 10 — из-за этого часть организаций просто не доезжала до списка.
                 resultPageSize = 30
                 userPosition = userPoint
@@ -176,6 +190,8 @@ object YandexSearchRepository {
     private fun GeoObject.toPlacePoint(category: NeedCategory, userPoint: Point): PlacePoint? {
         val point = geometry.firstOrNull()?.point ?: return null
         val metadata = metadataContainer.getItem(BusinessObjectMetadata::class.java)
+        // Остановки и станции метро приходят топонимами — у них нет "бизнесовых" данных.
+        val toponym = metadataContainer.getItem(ToponymObjectMetadata::class.java)
         // Рейтинг приходит отдельным сниппетом, а не внутри BusinessObjectMetadata.
         val rating = metadataContainer.getItem(BusinessRating1xObjectMetadata::class.java)
 
@@ -194,7 +210,9 @@ object YandexSearchRepository {
             onlinePaymentAvailable = false, // MapKit не даёт этот признак напрямую
             hasSubscriptionOption = false,
             approxAvgCheckRub = 0,
-            address = metadata?.address?.formattedAddress ?: "",
+            address = metadata?.address?.formattedAddress
+                ?: toponym?.address?.formattedAddress
+                ?: "",
             latitude = point.latitude,
             longitude = point.longitude,
             ratingsCount = rating?.ratings ?: 0,
@@ -204,8 +222,43 @@ object YandexSearchRepository {
             categoryDescription = metadata?.categories
                 ?.mapNotNull { it.name }
                 ?.takeIf { it.isNotEmpty() }
-                ?.joinToString(", ")
+                ?.joinToString(", "),
+            paymentMethods = detectPaymentMethods(metadata)
         )
+    }
+
+    /**
+     * Пытается понять способы оплаты из списка "особенностей" организации.
+     *
+     * ВАЖНО об ограничении: распознавание идёт по тексту названия особенности и её
+     * перечислимых значений («Оплата картой», «Наличный расчёт», «СБП»). Само значение
+     * булевых особенностей здесь НЕ читается — точную сигнатуру Android-класса
+     * Feature.VariantValue подтвердить не удалось, а гадать с ней не хочу, иначе
+     * рискуем не собрать проект. Практическое следствие: если Яндекс указал
+     * «оплата картой — нет», иконка всё равно появится. Как только убедимся, что
+     * сборка проходит, это можно уточнить, читая значение особенности.
+     */
+    private fun detectPaymentMethods(metadata: BusinessObjectMetadata?): Set<PaymentMethod> {
+        val features = metadata?.features ?: return emptySet()
+        val result = mutableSetOf<PaymentMethod>()
+
+        features.forEach { feature ->
+            val texts = buildList {
+                feature.name?.let { add(it) }
+                feature.value?.enumValue?.forEach { enumValue -> enumValue.name?.let { add(it) } }
+                feature.value?.textValue?.forEach { add(it) }
+            }.joinToString(" ").lowercase()
+
+            if (texts.isBlank()) return@forEach
+            // Отсекаем явные отрицания вида "оплата картой: нет".
+            if ("нет" in texts || "не приним" in texts) return@forEach
+
+            if ("карт" in texts) result += PaymentMethod.CARD
+            if ("сбп" in texts || "qr" in texts || "быстрых платеж" in texts) result += PaymentMethod.SBP
+            if ("налич" in texts) result += PaymentMethod.CASH
+        }
+
+        return result
     }
 
     private fun roundToOneDecimal(value: Double): Double = (value * 10).let { kotlin.math.round(it) } / 10.0

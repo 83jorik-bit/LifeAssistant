@@ -13,8 +13,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.LocalTaxi
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Straighten
@@ -38,12 +40,15 @@ import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
 import com.lifenavigator.app.R
 import com.lifenavigator.app.data.model.NeedCategory
+import com.lifenavigator.app.data.model.PaymentMethod
 import com.lifenavigator.app.data.model.PlacePoint
 import com.yandex.mapkit.Animation
 import com.yandex.mapkit.MapKitFactory
 import com.yandex.mapkit.geometry.Point
+import com.yandex.mapkit.map.CameraListener
 import com.yandex.mapkit.map.CameraPosition
 import com.yandex.mapkit.map.MapObjectCollection
+import com.yandex.mapkit.map.TextStyle
 import com.yandex.mapkit.mapview.MapView
 import com.yandex.mapkit.user_location.UserLocationLayer
 import com.yandex.runtime.image.ImageProvider
@@ -155,36 +160,28 @@ fun MapScreen(viewModel: MapViewModel = viewModel()) {
             }
         }
 
-        // Фильтр по категориям
+        // Категории можно комбинировать: выбранные складываются, «Все» сбрасывает фильтр.
         LazyRow(
             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             item {
                 FilterChip(
-                    selected = state.selectedCategory == null,
-                    onClick = { viewModel.selectCategory(null) },
+                    selected = state.selectedCategories.isEmpty(),
+                    onClick = { viewModel.clearCategories() },
                     label = { Text("Все") }
                 )
             }
             items(NeedCategory.entries) { category ->
                 FilterChip(
-                    selected = state.selectedCategory == category,
-                    onClick = { viewModel.selectCategory(category) },
+                    selected = category in state.selectedCategories,
+                    onClick = { viewModel.toggleCategory(category) },
                     label = { Text("${category.emoji} ${category.displayName}") }
                 )
             }
         }
 
-        FilterChip(
-            modifier = Modifier.padding(horizontal = 12.dp),
-            selected = state.onlyOnlinePayment,
-            onClick = { viewModel.toggleOnlinePaymentFilter() },
-            leadingIcon = { Icon(Icons.Filled.CreditCard, contentDescription = null, modifier = Modifier.size(16.dp)) },
-            label = { Text("Онлайн-оплата и подписки") }
-        )
-
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(4.dp))
 
         if (state.isLoading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -373,6 +370,16 @@ private fun YandexMapView(
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val mapView = remember { mutableStateOf<MapView?>(null) }
+    // Подписи видны только на близком зуме — состояние обновляет слушатель камеры ниже.
+    var showLabels by remember { mutableStateOf(true) }
+
+    // MapKit держит слушателей по слабой ссылке, поэтому храним его в remember,
+    // иначе сборщик мусора уберёт его и подписи перестанут переключаться.
+    val cameraListener = remember {
+        CameraListener { _, cameraPosition, _, _ ->
+            showLabels = cameraPosition.zoom >= LABELS_MIN_ZOOM
+        }
+    }
 
     AndroidView(
         modifier = Modifier.fillMaxSize(),
@@ -383,6 +390,7 @@ private fun YandexMapView(
                 view.map.move(
                     CameraPosition(MOSCOW_CENTER, /* zoom = */ 13.5f, /* azimuth = */ 0f, /* tilt = */ 0f)
                 )
+                view.map.addCameraListener(cameraListener)
 
                 val locationLayer = MapKitFactory.getInstance()
                     .createUserLocationLayer(view.mapWindow)
@@ -392,7 +400,7 @@ private fun YandexMapView(
             }
         },
         update = { view ->
-            renderPlaceMarkers(view.context, view.map.mapObjects, places)
+            renderPlaceMarkers(view.context, view.map.mapObjects, places, showLabels)
         }
     )
 
@@ -423,14 +431,42 @@ private fun YandexMapView(
     }
 }
 
-private fun renderPlaceMarkers(context: Context, collection: MapObjectCollection, places: List<PlacePoint>) {
+/** Тёмно-оранжевый цвет подписей у меток. */
+private const val LABEL_COLOR = 0xFFD2540A.toInt()
+
+/**
+ * Начиная с какого зума показывать подписи. Когда карту отдаляют, названия
+ * превращаются в кашу, поэтому ниже этого порога остаются только сами метки.
+ */
+private const val LABELS_MIN_ZOOM = 14f
+
+private fun renderPlaceMarkers(
+    context: Context,
+    collection: MapObjectCollection,
+    places: List<PlacePoint>,
+    showLabels: Boolean
+) {
     collection.clear()
     val icon = ImageProvider.fromResource(context, R.drawable.ic_map_marker)
     places.forEach { place ->
-        // Подписи вернули: раньше они дублировали названия самих Яндекс Карт, а теперь
-        // чужой слой poi скрыт (см. HIDE_POI_STYLE), и на карте подписаны только наши точки.
         val placemark = collection.addPlacemark(Point(place.latitude, place.longitude), icon)
-        placemark.setText(place.name)
+        // Подписи показываем только на близком зуме (см. LABELS_MIN_ZOOM).
+        // Чужой слой poi скрыт (HIDE_POI_STYLE), так что подписаны только наши точки.
+        if (showLabels) {
+            placemark.setText(
+                place.name,
+                TextStyle().apply {
+                    size = 11f
+                    color = LABEL_COLOR
+                    // Настоящей жирности у подписей MapKit нет — плотность даём
+                    // размером и широкой белой обводкой, за счёт неё текст читается
+                    // плотнее и не сливается с картой.
+                    outlineWidth = 3f
+                    placement = TextStyle.Placement.BOTTOM
+                    offset = 2f
+                }
+            )
+        }
     }
 }
 
@@ -447,11 +483,26 @@ private fun PlaceCard(place: PlacePoint, onClick: () -> Unit) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    "${place.category.emoji} ${place.name}",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "${place.category.emoji} ${place.name}",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    // Иконки способов оплаты идут сразу после названия.
+                    place.paymentMethods.forEach { method ->
+                        Spacer(Modifier.width(4.dp))
+                        Icon(
+                            imageVector = paymentIcon(method),
+                            contentDescription = method.label,
+                            modifier = Modifier.size(15.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
                 Text("${place.distanceKm} км", style = MaterialTheme.typography.bodySmall)
             }
 
@@ -493,4 +544,11 @@ private fun PlaceCard(place: PlacePoint, onClick: () -> Unit) {
             }
         }
     }
+}
+
+/** Иконка для способа оплаты рядом с названием места. */
+private fun paymentIcon(method: PaymentMethod) = when (method) {
+    PaymentMethod.CARD -> Icons.Filled.CreditCard
+    PaymentMethod.SBP -> Icons.Filled.QrCode
+    PaymentMethod.CASH -> Icons.Filled.Payments
 }

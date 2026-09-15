@@ -40,7 +40,7 @@ object MockRepository {
             BudgetCategory(NeedCategory.BEAUTY, monthlyLimitRub = 5000, spentRub = 2200),
             BudgetCategory(NeedCategory.CAFE, monthlyLimitRub = 8000, spentRub = 7100),
             BudgetCategory(NeedCategory.TRANSPORT, monthlyLimitRub = 3500, spentRub = 3500),
-            BudgetCategory(NeedCategory.SELF_DEVELOPMENT, monthlyLimitRub = 4000, spentRub = 1500)
+            BudgetCategory(NeedCategory.EDUCATION, monthlyLimitRub = 4000, spentRub = 1500)
         )
     }
 
@@ -48,10 +48,10 @@ object MockRepository {
         delay(150)
         return listOf(
             Subscription("s1", "МТС Premium", NeedCategory.TRANSPORT, 399, BillingCycle.MONTHLY, 4, true),
-            Subscription("s2", "IVI", NeedCategory.SELF_DEVELOPMENT, 299, BillingCycle.MONTHLY, 2, true),
+            Subscription("s2", "IVI", NeedCategory.EDUCATION, 299, BillingCycle.MONTHLY, 2, true),
             Subscription("s3", "Здравсити: автозаказ витаминов", NeedCategory.PHARMACY, 890, BillingCycle.MONTHLY, 9, true),
-            Subscription("s4", "Яндекс Плюс", NeedCategory.SELF_DEVELOPMENT, 399, BillingCycle.MONTHLY, 15, true),
-            Subscription("s5", "Онлайн-курс английского", NeedCategory.SELF_DEVELOPMENT, 1990, BillingCycle.MONTHLY, 20, true),
+            Subscription("s4", "Яндекс Плюс", NeedCategory.EDUCATION, 399, BillingCycle.MONTHLY, 15, true),
+            Subscription("s5", "Онлайн-курс английского", NeedCategory.EDUCATION, 1990, BillingCycle.MONTHLY, 20, true),
             Subscription("s6", "Папа Джонс: клуб скидок", NeedCategory.CAFE, 199, BillingCycle.YEARLY, 120, false)
         )
     }
