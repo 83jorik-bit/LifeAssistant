@@ -7,6 +7,8 @@ import com.lifenavigator.app.data.local.AppSettings
 import com.lifenavigator.app.data.local.PlacesCache
 import com.lifenavigator.app.data.model.NeedCategory
 import com.lifenavigator.app.data.model.PlacePoint
+import com.lifenavigator.app.data.repository.RaspRepository
+import com.lifenavigator.app.data.repository.ScheduleResult
 import com.lifenavigator.app.data.repository.YandexSearchRepository
 import com.yandex.mapkit.geometry.Point
 import kotlinx.coroutines.async
@@ -27,7 +29,11 @@ data class MapUiState(
     /** Место, карточка которого сейчас открыта. null — карточка закрыта. */
     val selectedPlace: PlacePoint? = null,
     /** Радиус поиска в метрах — задаётся в настройках. */
-    val searchRadiusMeters: Float = AppSettings.DEFAULT_RADIUS
+    val searchRadiusMeters: Float = AppSettings.DEFAULT_RADIUS,
+    /** Место, для которого открыто расписание. null — шторка расписания закрыта. */
+    val schedulePlace: PlacePoint? = null,
+    val isScheduleLoading: Boolean = false,
+    val scheduleResult: ScheduleResult? = null
 ) {
     val filteredPlaces: List<PlacePoint>
         get() = places
@@ -99,6 +105,21 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
     fun selectPlaceById(id: String) {
         val place = _uiState.value.places.firstOrNull { it.id == id } ?: return
         _uiState.update { it.copy(selectedPlace = place) }
+    }
+
+    /** Открывает расписание станции и подгружает его из API Яндекс Расписаний. */
+    fun openSchedule(place: PlacePoint) {
+        _uiState.update {
+            it.copy(schedulePlace = place, isScheduleLoading = true, scheduleResult = null)
+        }
+        viewModelScope.launch {
+            val result = RaspRepository.loadSchedule(place.latitude, place.longitude, place.name)
+            _uiState.update { it.copy(isScheduleLoading = false, scheduleResult = result) }
+        }
+    }
+
+    fun dismissSchedule() {
+        _uiState.update { it.copy(schedulePlace = null, scheduleResult = null, isScheduleLoading = false) }
     }
 
     fun dismissPlaceDetails() {

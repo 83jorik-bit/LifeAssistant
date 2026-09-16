@@ -284,7 +284,20 @@ fun MapScreen(viewModel: MapViewModel = viewModel()) {
         PlaceDetailsSheet(
             place = place,
             userPoint = state.userPoint,
+            onShowSchedule = {
+                viewModel.dismissPlaceDetails()
+                viewModel.openSchedule(place)
+            },
             onDismiss = { viewModel.dismissPlaceDetails() }
+        )
+    }
+
+    state.schedulePlace?.let { place ->
+        ScheduleSheet(
+            place = place,
+            isLoading = state.isScheduleLoading,
+            result = state.scheduleResult,
+            onDismiss = { viewModel.dismissSchedule() }
         )
     }
 
@@ -310,18 +323,11 @@ fun MapScreen(viewModel: MapViewModel = viewModel()) {
 private fun PlaceDetailsSheet(
     place: PlacePoint,
     userPoint: Point?,
+    onShowSchedule: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
     val isTransport = place.category == NeedCategory.TRANSPORT
-    // Вокзал, аэропорт, касса — места, где покупают билет на междугородний транспорт.
-    // Обычная остановка или вход в метро под это не подпадают.
-    val isTicketPlace = isTransport && listOfNotNull(place.name, place.categoryDescription)
-        .joinToString(" ")
-        .lowercase()
-        .let { text ->
-            listOf("вокзал", "касса", "аэропорт", "порт", "терминал").any { it in text }
-        }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
@@ -432,21 +438,25 @@ private fun PlaceDetailsSheet(
             }
 
             OutlinedButton(
-                onClick = { YandexMapsLauncher.openPlaceCard(context, place) },
+                onClick = {
+                    if (isTransport) onShowSchedule() else YandexMapsLauncher.openPlaceCard(context, place)
+                },
                 modifier = Modifier.fillMaxWidth()
             ) {
+                if (isTransport) {
+                    Icon(Icons.Filled.ConfirmationNumber, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                }
                 Text(if (isTransport) "Расписание и маршруты" else "Отзывы и фото в Яндекс Картах")
             }
 
-            if (isTicketPlace) {
+            if (isTransport) {
                 Spacer(Modifier.height(8.dp))
-                FilledTonalButton(
-                    onClick = { YandexMapsLauncher.openSchedule(context, place) },
+                OutlinedButton(
+                    onClick = { YandexMapsLauncher.openPlaceCard(context, place) },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(Icons.Filled.ConfirmationNumber, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Расписание и билеты")
+                    Text("Открыть остановку в Яндекс Картах")
                 }
             }
 

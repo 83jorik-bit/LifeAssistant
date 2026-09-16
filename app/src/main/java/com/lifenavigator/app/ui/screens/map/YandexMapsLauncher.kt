@@ -121,22 +121,6 @@ object YandexMapsLauncher {
         openFirstAvailable(context, candidates)
     }
 
-    /**
-     * Открывает Яндекс Расписания — там по станции видно рейсы, а для поездов и автобусов
-     * доступна покупка билета.
-     *
-     * Прямой ссылки «на расписание конкретной станции» у Яндекса нет в открытом виде:
-     * страница станции имеет вид rasp.yandex.ru/station/<код>, но этот код выдаёт только
-     * API Яндекс Расписаний (бесплатный, но по отдельному ключу). Пока ключа нет, открываем
-     * поиск по названию станции — пользователь попадает на нужную страницу в один клик.
-     */
-    fun openSchedule(context: Context, place: PlacePoint) {
-        openFirstAvailable(
-            context,
-            listOf("https://rasp.yandex.ru/search/?text=${Uri.encode(place.name)}")
-        )
-    }
-
     private fun openFirstAvailable(context: Context, uris: List<String>) {
         for (uri in uris) {
             try {
