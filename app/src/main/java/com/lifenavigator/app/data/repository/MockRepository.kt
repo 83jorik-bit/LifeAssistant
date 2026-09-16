@@ -12,25 +12,6 @@ import kotlinx.coroutines.delay
  */
 object MockRepository {
 
-    suspend fun getNearbyPlaces(category: NeedCategory? = null): List<PlacePoint> {
-        delay(150) // имитация сетевой задержки
-        // Координаты — тестовые, разбросаны вокруг центра Москвы.
-        // В реальной версии придут от бэкенда/каталога поставщиков вместе с адресом.
-        val all = listOf(
-            PlacePoint("p1", "Здравсити", NeedCategory.PHARMACY, 0.4, 4.7, 1520, true, true, 650, "ул. Ленина, 12", 55.7530, 37.6215),
-            PlacePoint("p2", "Аптека №1", NeedCategory.PHARMACY, 0.9, 4.3, 340, true, false, 500, "пр. Мира, 5", 55.7601, 37.6280),
-            PlacePoint("p3", "Пятёрочка", NeedCategory.GROCERY, 0.3, 4.1, 980, true, false, 1200, "ул. Ленина, 8", 55.7508, 37.6165),
-            PlacePoint("p4", "ВкусВилл", NeedCategory.GROCERY, 0.7, 4.6, 2100, true, true, 1800, "ул. Садовая, 3", 55.7550, 37.6320),
-            PlacePoint("p5", "Клиника Мед-Сити", NeedCategory.CLINIC, 1.2, 4.8, 640, true, true, 2500, "ул. Победы, 21", 55.7455, 37.6100),
-            PlacePoint("p6", "СберЗдоровье", NeedCategory.CLINIC, 2.0, 4.5, 1200, true, true, 1900, "онлайн + офис", 55.7680, 37.6400),
-            PlacePoint("p7", "Салон Виктория", NeedCategory.BEAUTY, 1.5, 4.4, 210, true, false, 2200, "ул. Гагарина, 15", 55.7400, 37.6250),
-            PlacePoint("p8", "Постамат Wildberries", NeedCategory.PICKUP_POINT, 0.2, 4.2, 89, false, false, 0, "ул. Ленина, 10", 55.7515, 37.6190),
-            PlacePoint("p9", "Додо Пицца", NeedCategory.CAFE, 0.6, 4.5, 3400, true, true, 900, "пр. Мира, 1", 55.7590, 37.6350),
-            PlacePoint("p10", "Кофемания", NeedCategory.CAFE, 0.5, 4.6, 780, true, false, 450, "ул. Садовая, 7", 55.7545, 37.6280)
-        )
-        return if (category == null) all else all.filter { it.category == category }
-    }
-
     suspend fun getBudgetCategories(): List<BudgetCategory> {
         delay(150)
         return listOf(

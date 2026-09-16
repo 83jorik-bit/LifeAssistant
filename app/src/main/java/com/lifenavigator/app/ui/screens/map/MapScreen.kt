@@ -4,19 +4,22 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.LocalTaxi
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MyLocation
-import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Place
-import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Straighten
@@ -29,8 +32,6 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -38,16 +39,17 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
-import com.lifenavigator.app.R
 import com.lifenavigator.app.data.model.NeedCategory
-import com.lifenavigator.app.data.model.PaymentMethod
 import com.lifenavigator.app.data.model.PlacePoint
+import com.lifenavigator.app.ui.screens.menu.SettingsSheet
+import com.lifenavigator.app.ui.screens.menu.SignInDialog
 import com.yandex.mapkit.Animation
 import com.yandex.mapkit.MapKitFactory
 import com.yandex.mapkit.geometry.Point
 import com.yandex.mapkit.map.CameraListener
 import com.yandex.mapkit.map.CameraPosition
 import com.yandex.mapkit.map.MapObjectCollection
+import com.yandex.mapkit.map.MapObjectTapListener
 import com.yandex.mapkit.map.TextStyle
 import com.yandex.mapkit.mapview.MapView
 import com.yandex.mapkit.user_location.UserLocationLayer
@@ -61,12 +63,23 @@ private val MOSCOW_CENTER = Point(55.7530, 37.6215)
  * чтобы на карте остались только те места, что показаны в списке под ней.
  *
  * Подложка — дороги, дома, названия улиц и районов — остаётся нетронутой:
- * выключается только слой `poi`. Если понадобится убрать что-то ещё
- * (например значки транспорта), сюда же добавляется тег `transit`.
- * Формат описан в документации MapKit «Стили карты».
+ * выключается только слой `poi`.
  */
 private const val HIDE_POI_STYLE =
     """[{"types":"point","tags":{"all":["poi"]},"stylers":{"visibility":"off"}}]"""
+
+/**
+ * Цвет подписей — тёмно-графитовый, как у названий организаций в Яндекс Картах.
+ * Оттенок подобран на глаз по внешнему виду карт: официального списка цветов
+ * своего интерфейса Яндекс не публикует, так что это приближение, а не точное значение.
+ */
+private const val LABEL_COLOR = 0xFF3C4043.toInt()
+
+/**
+ * Начиная с какого зума показывать подписи. Пока карта обзорная, видны только
+ * значки категорий — так карта остаётся читаемой.
+ */
+private const val LABELS_MIN_ZOOM = 16f
 
 @SuppressLint("MissingPermission") // проверка разрешения выполняется через hasLocationPermission перед вызовом
 @OptIn(ExperimentalMaterial3Api::class)
@@ -82,12 +95,13 @@ fun MapScreen(viewModel: MapViewModel = viewModel()) {
                 PackageManager.PERMISSION_GRANTED
         )
     }
-    // Держим ссылки на слой геолокации и сам MapView, чтобы кнопка "моя геолокация" могла ими управлять.
     var userLocationLayer by remember { mutableStateOf<UserLocationLayer?>(null) }
     var mapViewRef by remember { mutableStateOf<MapView?>(null) }
 
-    // Запрашивает текущие координаты, плавно перемещает камеру к ним
-    // и подтягивает реальные точки рядом (вместо тестовых данных).
+    var menuExpanded by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
+    var showSignIn by remember { mutableStateOf(false) }
+
     val centerOnUser: () -> Unit = {
         userLocationLayer?.isVisible = true
         val cancellationTokenSource = CancellationTokenSource()
@@ -107,9 +121,6 @@ fun MapScreen(viewModel: MapViewModel = viewModel()) {
             }
     }
 
-    // Если разрешение уже выдано раньше — сразу подтягиваем реальные точки при открытии экрана,
-    // не дожидаясь нажатия на кнопку "моя геолокация". Ждём, пока карта реально смонтируется
-    // (mapViewRef появится чуть позже первого кадра), иначе центрирование камеры не сработает.
     var hasAutoLoaded by remember { mutableStateOf(false) }
     LaunchedEffect(mapViewRef, hasLocationPermission) {
         if (!hasAutoLoaded && hasLocationPermission && mapViewRef != null) {
@@ -130,7 +141,47 @@ fun MapScreen(viewModel: MapViewModel = viewModel()) {
     }
 
     Column(Modifier.fillMaxSize()) {
-        TopAppBar(title = { Text("Карта потребностей") })
+        // Компактная шапка вместо полноразмерного TopAppBar: он занимал заметную
+        // часть экрана впустую. Здесь же живёт кнопка меню.
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                "Карта потребностей",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+
+            Box {
+                IconButton(onClick = { menuExpanded = true }) {
+                    Icon(Icons.Filled.Menu, contentDescription = "Меню")
+                }
+                DropdownMenu(
+                    expanded = menuExpanded,
+                    onDismissRequest = { menuExpanded = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Войти") },
+                        onClick = {
+                            menuExpanded = false
+                            showSignIn = true
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Настройки") },
+                        onClick = {
+                            menuExpanded = false
+                            showSettings = true
+                        }
+                    )
+                }
+            }
+        }
 
         Box(
             Modifier
@@ -141,7 +192,8 @@ fun MapScreen(viewModel: MapViewModel = viewModel()) {
                 places = state.filteredPlaces,
                 hasLocationPermission = hasLocationPermission,
                 onLocationLayerReady = { layer -> userLocationLayer = layer },
-                onMapViewReady = { view -> mapViewRef = view }
+                onMapViewReady = { view -> mapViewRef = view },
+                onPlaceTapped = { id -> viewModel.selectPlaceById(id) }
             )
 
             FloatingActionButton(
@@ -182,11 +234,26 @@ fun MapScreen(viewModel: MapViewModel = viewModel()) {
             }
         }
 
-        Spacer(Modifier.height(4.dp))
-
         if (state.isLoading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
+            }
+        } else if (state.filteredPlaces.isEmpty()) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .padding(32.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    if (state.isRefreshingRealData) {
+                        "Ищем места рядом…"
+                    } else {
+                        "Список пуст. Нажмите кнопку геолокации, чтобы найти места рядом."
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         } else {
             LazyColumn(
@@ -207,11 +274,23 @@ fun MapScreen(viewModel: MapViewModel = viewModel()) {
             onDismiss = { viewModel.dismissPlaceDetails() }
         )
     }
+
+    if (showSettings) {
+        SettingsSheet(
+            currentRadiusMeters = state.searchRadiusMeters,
+            onRadiusSelected = { viewModel.setSearchRadius(it) },
+            onDismiss = { showSettings = false }
+        )
+    }
+
+    if (showSignIn) {
+        SignInDialog(onDismiss = { showSignIn = false })
+    }
 }
 
 /**
  * Карточка места: то, что MapKit отдаёт напрямую (рейтинг, часы, телефон),
- * плюс кнопки перехода в Яндекс Карты за маршрутом и отзывами.
+ * плюс кнопки перехода в Яндекс Карты.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -221,6 +300,7 @@ private fun PlaceDetailsSheet(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    val isTransport = place.category == NeedCategory.TRANSPORT
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
@@ -290,8 +370,15 @@ private fun PlaceDetailsSheet(
             Text("Как добраться", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(8.dp))
 
-            // Четыре режима Яндекс Карт в две строки — в одну строку подписи не помещаются.
-            YandexMapsLauncher.RouteType.entries.chunked(2).forEach { row ->
+            // До остановки логично добираться своим ходом, поэтому для транспорта
+            // оставляем только пешком и самокат — машина и такси до остановки бессмысленны.
+            val routeTypes = if (isTransport) {
+                listOf(YandexMapsLauncher.RouteType.WALK, YandexMapsLauncher.RouteType.SCOOTER)
+            } else {
+                YandexMapsLauncher.RouteType.entries.toList()
+            }
+
+            routeTypes.chunked(2).forEach { row ->
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -305,32 +392,40 @@ private fun PlaceDetailsSheet(
                             Text(type.title, style = MaterialTheme.typography.labelLarge)
                         }
                     }
+                    // Если в строке одна кнопка, не даём ей растянуться на всю ширину.
+                    if (row.size == 1) Spacer(Modifier.weight(1f))
                 }
                 Spacer(Modifier.height(8.dp))
             }
 
-            FilledTonalButton(
-                onClick = { YandexMapsLauncher.orderTaxi(context, userPoint, place) },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Icon(Icons.Filled.LocalTaxi, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("Вызвать такси")
+            if (!isTransport) {
+                FilledTonalButton(
+                    onClick = { YandexMapsLauncher.orderTaxi(context, userPoint, place) },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Filled.LocalTaxi, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Вызвать такси")
+                }
+                Spacer(Modifier.height(12.dp))
             }
-
-            Spacer(Modifier.height(12.dp))
 
             OutlinedButton(
                 onClick = { YandexMapsLauncher.openPlaceCard(context, place) },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Отзывы и фото в Яндекс Картах")
+                Text(if (isTransport) "Маршруты" else "Отзывы и фото в Яндекс Картах")
             }
 
             Spacer(Modifier.height(8.dp))
             Text(
-                "Тексты отзывов и фотографии MapKit SDK не передаёт — их можно посмотреть " +
-                    "в приложении Яндекс Карты по кнопке выше.",
+                if (isTransport) {
+                    "Какие маршруты проходят через эту остановку и когда будет ближайший транспорт — " +
+                        "видно в карточке остановки в Яндекс Картах."
+                } else {
+                    "Тексты отзывов и фотографии MapKit SDK не передаёт — их можно посмотреть " +
+                        "в приложении Яндекс Карты по кнопке выше."
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -359,41 +454,52 @@ private fun DetailRow(icon: androidx.compose.ui.graphics.vector.ImageVector, tex
 
 /**
  * Обёртка над нативным Yandex MapView для использования в Compose.
- * Управляет жизненным циклом (MapKitFactory.onStart/onStop) и перерисовывает
- * маркеры при изменении списка точек.
  */
 @Composable
 private fun YandexMapView(
     places: List<PlacePoint>,
     hasLocationPermission: Boolean,
     onLocationLayerReady: (UserLocationLayer) -> Unit,
-    onMapViewReady: (MapView) -> Unit
+    onMapViewReady: (MapView) -> Unit,
+    onPlaceTapped: (String) -> Unit
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
+    val context = LocalContext.current
     val mapView = remember { mutableStateOf<MapView?>(null) }
-    // Подписи видны только на близком зуме — состояние обновляет слушатель камеры ниже.
-    var showLabels by remember { mutableStateOf(true) }
+    var showLabels by remember { mutableStateOf(false) }
 
-    // MapKit держит слушателей по слабой ссылке, поэтому храним его в remember,
-    // иначе сборщик мусора уберёт его и подписи перестанут переключаться.
+    // Значки категорий рисуем один раз и переиспользуем: создавать растр на каждую
+    // метку при каждой перерисовке — лишняя работа на ровном месте.
+    val categoryIcons = remember(context) {
+        NeedCategory.entries.associateWith { category ->
+            ImageProvider.fromBitmap(categoryMarkerBitmap(context, category))
+        }
+    }
+
+    // MapKit держит слушателей по слабой ссылке, поэтому храним их в remember,
+    // иначе сборщик мусора уберёт их и метки перестанут реагировать.
     val cameraListener = remember {
         CameraListener { _, cameraPosition, _, _ ->
             showLabels = cameraPosition.zoom >= LABELS_MIN_ZOOM
         }
     }
+    val tapListener = remember {
+        MapObjectTapListener { mapObject, _ ->
+            (mapObject.userData as? String)?.let(onPlaceTapped)
+            true
+        }
+    }
 
     AndroidView(
         modifier = Modifier.fillMaxSize(),
-        factory = { context ->
-            MapView(context).also { view ->
+        factory = { ctx ->
+            MapView(ctx).also { view ->
                 mapView.value = view
                 view.map.setMapStyle(HIDE_POI_STYLE)
                 view.map.move(
                     CameraPosition(MOSCOW_CENTER, /* zoom = */ 13.5f, /* azimuth = */ 0f, /* tilt = */ 0f)
                 )
-                // SDK принимает слушателя именно слабой ссылкой. Сильную ссылку держим
-                // в remember выше — без неё слушателя соберёт GC и подписи перестанут
-                // переключаться при зуме.
+                // SDK принимает слушателя камеры именно слабой ссылкой.
                 view.map.addCameraListener(WeakReference(cameraListener))
 
                 val locationLayer = MapKitFactory.getInstance()
@@ -404,14 +510,14 @@ private fun YandexMapView(
             }
         },
         update = { view ->
-            renderPlaceMarkers(view.context, view.map.mapObjects, places, showLabels)
+            renderPlaceMarkers(view.map.mapObjects, places, categoryIcons, showLabels, tapListener)
         }
     )
 
     DisposableEffect(lifecycleOwner) {
-        MapKitFactory.getInstance().onStart()
-        mapView.value?.onStart()
-
+        // Важно: onStart/onStop вызываем ТОЛЬКО из наблюдателя жизненного цикла.
+        // Раньше здесь был ещё и прямой вызов onStart, из-за чего при некоторых
+        // сценариях старт/стоп могли задваиваться.
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_START -> {
@@ -427,45 +533,82 @@ private fun YandexMapView(
         }
         lifecycleOwner.lifecycle.addObserver(observer)
 
+        // Если экран открылся, когда приложение уже в состоянии STARTED,
+        // событие ON_START не придёт — запускаем вручную.
+        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+            MapKitFactory.getInstance().onStart()
+            mapView.value?.onStart()
+        }
+
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
-            mapView.value?.onStop()
-            MapKitFactory.getInstance().onStop()
+            if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+                mapView.value?.onStop()
+                MapKitFactory.getInstance().onStop()
+            }
         }
     }
 }
 
-/** Тёмно-оранжевый цвет подписей у меток. */
-private const val LABEL_COLOR = 0xFFD2540A.toInt()
-
 /**
- * Начиная с какого зума показывать подписи. Когда карту отдаляют, названия
- * превращаются в кашу, поэтому ниже этого порога остаются только сами метки.
+ * Рисует значок категории: белый кружок с цветной каймой и эмодзи внутри.
+ * Эмодзи берём из самой категории — так значок сразу узнаваем и не нужно
+ * рисовать девять векторных иконок вручную.
  */
-private const val LABELS_MIN_ZOOM = 14f
+private fun categoryMarkerBitmap(context: Context, category: NeedCategory): Bitmap {
+    val density = context.resources.displayMetrics.density
+    val sizePx = (34 * density).toInt().coerceAtLeast(1)
+    val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    val center = sizePx / 2f
+    val strokeWidth = 2f * density
+
+    val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.WHITE
+        style = Paint.Style.FILL
+    }
+    canvas.drawCircle(center, center, center - strokeWidth, fillPaint)
+
+    val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xFF2E7D6B.toInt()
+        style = Paint.Style.STROKE
+        this.strokeWidth = strokeWidth
+    }
+    canvas.drawCircle(center, center, center - strokeWidth, borderPaint)
+
+    val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textSize = sizePx * 0.5f
+        textAlign = Paint.Align.CENTER
+    }
+    val metrics = textPaint.fontMetrics
+    val baseline = center - (metrics.ascent + metrics.descent) / 2f
+    canvas.drawText(category.emoji, center, baseline, textPaint)
+
+    return bitmap
+}
 
 private fun renderPlaceMarkers(
-    context: Context,
     collection: MapObjectCollection,
     places: List<PlacePoint>,
-    showLabels: Boolean
+    categoryIcons: Map<NeedCategory, ImageProvider>,
+    showLabels: Boolean,
+    tapListener: MapObjectTapListener
 ) {
     collection.clear()
-    val icon = ImageProvider.fromResource(context, R.drawable.ic_map_marker)
     places.forEach { place ->
+        val icon = categoryIcons[place.category] ?: return@forEach
         val placemark = collection.addPlacemark(Point(place.latitude, place.longitude), icon)
-        // Подписи показываем только на близком зуме (см. LABELS_MIN_ZOOM).
-        // Чужой слой poi скрыт (HIDE_POI_STYLE), так что подписаны только наши точки.
+        // По идентификатору в userData находим место, когда по метке тапнули.
+        placemark.userData = place.id
+        placemark.addTapListener(tapListener)
+
         if (showLabels) {
             placemark.setText(
                 place.name,
                 TextStyle().apply {
-                    size = 11f
+                    size = 9f
                     color = LABEL_COLOR
-                    // Настоящей жирности у подписей MapKit нет — плотность даём
-                    // размером и широкой белой обводкой, за счёт неё текст читается
-                    // плотнее и не сливается с картой.
-                    outlineWidth = 3f
+                    outlineWidth = 2f
                     placement = TextStyle.Placement.BOTTOM
                     offset = 2f
                 }
@@ -487,26 +630,12 @@ private fun PlaceCard(place: PlacePoint, onClick: () -> Unit) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    modifier = Modifier.weight(1f),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        "${place.category.emoji} ${place.name}",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    // Иконки способов оплаты идут сразу после названия.
-                    place.paymentMethods.forEach { method ->
-                        Spacer(Modifier.width(4.dp))
-                        Icon(
-                            imageVector = paymentIcon(method),
-                            contentDescription = method.label,
-                            modifier = Modifier.size(15.dp),
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
+                Text(
+                    "${place.category.emoji} ${place.name}",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f)
+                )
                 Text("${place.distanceKm} км", style = MaterialTheme.typography.bodySmall)
             }
 
@@ -519,11 +648,15 @@ private fun PlaceCard(place: PlacePoint, onClick: () -> Unit) {
                 )
                 Spacer(Modifier.height(2.dp))
             }
-            Text(place.address, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                place.address,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
 
-            Spacer(Modifier.height(6.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (place.rating > 0) {
+            if (place.rating > 0) {
+                Spacer(Modifier.height(6.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Filled.Star, contentDescription = null, modifier = Modifier.size(14.dp))
                     Spacer(Modifier.width(2.dp))
                     Text(
@@ -531,28 +664,8 @@ private fun PlaceCard(place: PlacePoint, onClick: () -> Unit) {
                             if (place.reviewsCount > 0) " (${place.reviewsCount})" else "",
                         style = MaterialTheme.typography.bodySmall
                     )
-                    Spacer(Modifier.width(12.dp))
                 }
-                if (place.onlinePaymentAvailable) {
-                    AssistChip(onClick = {}, label = { Text("Онлайн-оплата", style = MaterialTheme.typography.labelSmall) })
-                }
-                if (place.hasSubscriptionOption) {
-                    Spacer(Modifier.width(4.dp))
-                    AssistChip(onClick = {}, label = { Text("Подписка", style = MaterialTheme.typography.labelSmall) })
-                }
-            }
-
-            if (place.approxAvgCheckRub > 0) {
-                Spacer(Modifier.height(4.dp))
-                Text("Средний чек: ~${place.approxAvgCheckRub} ₽", style = MaterialTheme.typography.bodySmall)
             }
         }
     }
-}
-
-/** Иконка для способа оплаты рядом с названием места. */
-private fun paymentIcon(method: PaymentMethod) = when (method) {
-    PaymentMethod.CARD -> Icons.Filled.CreditCard
-    PaymentMethod.SBP -> Icons.Filled.QrCode
-    PaymentMethod.CASH -> Icons.Filled.Payments
 }
