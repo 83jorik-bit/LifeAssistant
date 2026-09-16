@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import com.lifenavigator.app.data.model.NeedCategory
 import com.lifenavigator.app.data.model.PlacePoint
 import com.yandex.mapkit.geometry.Point
 
@@ -95,18 +96,21 @@ object YandexMapsLauncher {
      *
      * Порядок попыток важен:
      * 1. Собственный URI объекта (`ymapsbm1://…`), который отдаёт сам MapKit. Для остановки
-     *    это ссылка именно на карточку остановки — с проходящими маршрутами, а не на
-     *    организацию с отзывами. Ради этого пункта всё и затевалось.
+     *    это ссылка именно на карточку остановки — с расписанием и маршрутами.
      * 2. Карточка организации по oid — для магазинов, кафе и прочего бизнеса.
-     * 3. Поиск по названию рядом с координатами — если ничего из этого нет.
-     *
-     * Обрабатывает ли приложение Яндекс Карт схему `ymapsbm1://`, в документации не описано,
-     * поэтому при неудаче мы просто проваливаемся на следующий вариант — хуже, чем было, не станет.
+     *    Для остановок этот шаг ПРОПУСКАЕТСЯ: часть станций заведена в Яндексе ещё и как
+     *    организация, и открытие по oid приводило на обзор с отзывами вместо расписания.
+     * 3. Поиск по названию рядом с координатами.
+     * 4. Веб-версия.
      */
     fun openPlaceCard(context: Context, place: PlacePoint) {
+        val isTransport = place.category == NeedCategory.TRANSPORT
+
         val candidates = buildList {
             place.yandexUri?.takeIf { it.isNotBlank() }?.let { add(it) }
-            place.yandexOid?.takeIf { it.isNotBlank() }?.let { add("yandexmaps://maps.yandex.ru/?oid=$it") }
+            if (!isTransport) {
+                place.yandexOid?.takeIf { it.isNotBlank() }?.let { add("yandexmaps://maps.yandex.ru/?oid=$it") }
+            }
             add(
                 "yandexmaps://maps.yandex.ru/?ll=${place.longitude},${place.latitude}" +
                     "&z=17&text=${Uri.encode(place.name)}"
@@ -114,7 +118,27 @@ object YandexMapsLauncher {
             add(searchWebUrl(place))
         }
 
-        for (uri in candidates) {
+        openFirstAvailable(context, candidates)
+    }
+
+    /**
+     * Открывает Яндекс Расписания — там по станции видно рейсы, а для поездов и автобусов
+     * доступна покупка билета.
+     *
+     * Прямой ссылки «на расписание конкретной станции» у Яндекса нет в открытом виде:
+     * страница станции имеет вид rasp.yandex.ru/station/<код>, но этот код выдаёт только
+     * API Яндекс Расписаний (бесплатный, но по отдельному ключу). Пока ключа нет, открываем
+     * поиск по названию станции — пользователь попадает на нужную страницу в один клик.
+     */
+    fun openSchedule(context: Context, place: PlacePoint) {
+        openFirstAvailable(
+            context,
+            listOf("https://rasp.yandex.ru/search/?text=${Uri.encode(place.name)}")
+        )
+    }
+
+    private fun openFirstAvailable(context: Context, uris: List<String>) {
+        for (uri in uris) {
             try {
                 context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(uri)))
                 return
@@ -122,7 +146,7 @@ object YandexMapsLauncher {
                 // пробуем следующий вариант
             }
         }
-        Toast.makeText(context, "Не нашлось приложения, чтобы открыть карты", Toast.LENGTH_LONG).show()
+        Toast.makeText(context, "Не нашлось приложения, чтобы открыть ссылку", Toast.LENGTH_LONG).show()
     }
 
     private fun searchWebUrl(place: PlacePoint): String =

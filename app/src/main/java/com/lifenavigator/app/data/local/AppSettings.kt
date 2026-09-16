@@ -15,10 +15,10 @@ class AppSettings(context: Context) {
         set(value) = prefs.edit().putFloat(KEY_RADIUS, value).apply()
 
     companion object {
-        const val DEFAULT_RADIUS = 3000f
+        const val DEFAULT_RADIUS = 1000f
 
         /** Варианты радиуса, которые предлагаются в настройках. */
-        val RADIUS_OPTIONS = listOf(1000f, 3000f, 5000f)
+        val RADIUS_OPTIONS = listOf(500f, 1000f, 2000f, 3000f)
 
         private const val KEY_RADIUS = "search_radius_meters"
     }
