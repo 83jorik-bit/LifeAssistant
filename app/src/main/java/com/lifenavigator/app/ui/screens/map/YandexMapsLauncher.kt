@@ -92,21 +92,47 @@ object YandexMapsLauncher {
     }
 
     /**
+     * Идентификатор остановки внутри URI, который отдаёт MapKit
+     * (`ymapsbm1://transit/stop?id=stop__9680782`).
+     */
+    private val STOP_ID_REGEX = Regex("stop__[A-Za-z0-9_]+")
+
+    /**
+     * Возвращает идентификатор остановки, если место — городская остановка транспорта.
+     * По нему можно открыть в Яндекс Картах сразу вкладку расписания.
+     */
+    fun stopIdOf(place: PlacePoint): String? {
+        if (place.category != NeedCategory.TRANSPORT) return null
+        return place.yandexUri?.let { STOP_ID_REGEX.find(it)?.value }
+    }
+
+    /**
+     * Ссылка, открывающая карточку остановки сразу на расписании.
+     * Формат `masstransit[stopId]` + `mode=stop` — тот, что использует сама веб-версия
+     * Яндекс Карт; на Android такая ссылка подхватывается приложением Карт,
+     * а без него открывается веб-версия с тем же расписанием.
+     */
+    private fun stopScheduleUrl(place: PlacePoint, stopId: String): String =
+        "https://yandex.ru/maps/?ll=${place.longitude},${place.latitude}" +
+            "&masstransit%5BstopId%5D=$stopId&mode=stop&z=18"
+
+    /**
      * Открывает объект в Яндекс Картах.
      *
      * Порядок попыток важен:
-     * 1. Собственный URI объекта (`ymapsbm1://…`), который отдаёт сам MapKit. Для остановки
-     *    это ссылка именно на карточку остановки — с расписанием и маршрутами.
-     * 2. Карточка организации по oid — для магазинов, кафе и прочего бизнеса.
+     * 1. Для городской остановки — сразу вкладка расписания по её stopId.
+     * 2. Собственный URI объекта (`ymapsbm1://…`), который отдаёт сам MapKit.
+     * 3. Карточка организации по oid — для магазинов, кафе и прочего бизнеса.
      *    Для остановок этот шаг ПРОПУСКАЕТСЯ: часть станций заведена в Яндексе ещё и как
      *    организация, и открытие по oid приводило на обзор с отзывами вместо расписания.
-     * 3. Поиск по названию рядом с координатами.
-     * 4. Веб-версия.
+     * 4. Поиск по названию рядом с координатами, затем веб-версия.
      */
     fun openPlaceCard(context: Context, place: PlacePoint) {
         val isTransport = place.category == NeedCategory.TRANSPORT
+        val stopId = stopIdOf(place)
 
         val candidates = buildList {
+            stopId?.let { add(stopScheduleUrl(place, it)) }
             place.yandexUri?.takeIf { it.isNotBlank() }?.let { add(it) }
             if (!isTransport) {
                 place.yandexOid?.takeIf { it.isNotBlank() }?.let { add("yandexmaps://maps.yandex.ru/?oid=$it") }
