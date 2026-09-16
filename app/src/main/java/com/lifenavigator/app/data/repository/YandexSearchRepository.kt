@@ -1,7 +1,6 @@
 package com.lifenavigator.app.data.repository
 
 import com.lifenavigator.app.data.model.NeedCategory
-import com.lifenavigator.app.data.model.PaymentMethod
 import com.lifenavigator.app.data.model.PlacePoint
 import com.yandex.mapkit.GeoObject
 import com.yandex.mapkit.geometry.BoundingBox
@@ -207,9 +206,6 @@ object YandexSearchRepository {
             distanceKm = roundToOneDecimal(haversineKm(userPoint, point)),
             rating = rating?.score?.toDouble() ?: 0.0,
             reviewsCount = rating?.reviews ?: 0,
-            onlinePaymentAvailable = false, // MapKit не даёт этот признак напрямую
-            hasSubscriptionOption = false,
-            approxAvgCheckRub = 0,
             address = metadata?.address?.formattedAddress
                 ?: toponym?.address?.formattedAddress
                 ?: "",
@@ -223,42 +219,7 @@ object YandexSearchRepository {
                 ?.mapNotNull { it.name }
                 ?.takeIf { it.isNotEmpty() }
                 ?.joinToString(", "),
-            paymentMethods = detectPaymentMethods(metadata)
         )
-    }
-
-    /**
-     * Пытается понять способы оплаты из списка "особенностей" организации.
-     *
-     * ВАЖНО об ограничении: распознавание идёт по тексту названия особенности и её
-     * перечислимых значений («Оплата картой», «Наличный расчёт», «СБП»). Само значение
-     * булевых особенностей здесь НЕ читается — точную сигнатуру Android-класса
-     * Feature.VariantValue подтвердить не удалось, а гадать с ней не хочу, иначе
-     * рискуем не собрать проект. Практическое следствие: если Яндекс указал
-     * «оплата картой — нет», иконка всё равно появится. Как только убедимся, что
-     * сборка проходит, это можно уточнить, читая значение особенности.
-     */
-    private fun detectPaymentMethods(metadata: BusinessObjectMetadata?): Set<PaymentMethod> {
-        val features = metadata?.features ?: return emptySet()
-        val result = mutableSetOf<PaymentMethod>()
-
-        features.forEach { feature ->
-            val texts = buildList {
-                feature.name?.let { add(it) }
-                feature.value?.enumValue?.forEach { enumValue -> enumValue.name?.let { add(it) } }
-                feature.value?.textValue?.forEach { add(it) }
-            }.joinToString(" ").lowercase()
-
-            if (texts.isBlank()) return@forEach
-            // Отсекаем явные отрицания вида "оплата картой: нет".
-            if ("нет" in texts || "не приним" in texts) return@forEach
-
-            if ("карт" in texts) result += PaymentMethod.CARD
-            if ("сбп" in texts || "qr" in texts || "быстрых платеж" in texts) result += PaymentMethod.SBP
-            if ("налич" in texts) result += PaymentMethod.CASH
-        }
-
-        return result
     }
 
     private fun roundToOneDecimal(value: Double): Double = (value * 10).let { kotlin.math.round(it) } / 10.0
