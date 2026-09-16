@@ -10,7 +10,9 @@ import android.graphics.Paint
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -27,6 +29,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
@@ -69,17 +73,10 @@ private const val HIDE_POI_STYLE =
     """[{"types":"point","tags":{"all":["poi"]},"stylers":{"visibility":"off"}}]"""
 
 /**
- * Цвет подписей — тёмно-графитовый, как у названий организаций в Яндекс Картах.
- * Оттенок подобран на глаз по внешнему виду карт: официального списка цветов
- * своего интерфейса Яндекс не публикует, так что это приближение, а не точное значение.
- */
-private const val LABEL_COLOR = 0xFF3C4043.toInt()
-
-/**
  * Начиная с какого зума показывать подписи. Пока карта обзорная, видны только
  * значки категорий — так карта остаётся читаемой.
  */
-private const val LABELS_MIN_ZOOM = 16f
+private const val LABELS_MIN_ZOOM = 18f
 
 @SuppressLint("MissingPermission") // проверка разрешения выполняется через hasLocationPermission перед вызовом
 @OptIn(ExperimentalMaterial3Api::class)
@@ -226,10 +223,18 @@ fun MapScreen(viewModel: MapViewModel = viewModel()) {
                 )
             }
             items(NeedCategory.entries) { category ->
+                val selected = category in state.selectedCategories
                 FilterChip(
-                    selected = category in state.selectedCategories,
+                    selected = selected,
                     onClick = { viewModel.toggleCategory(category) },
-                    label = { Text("${category.emoji} ${category.displayName}") }
+                    label = {
+                        Text(
+                            "${category.emoji} ${category.displayName}",
+                            // Надпись категории — её собственным цветом, тем же,
+                            // что у каймы метки и подписи на карте.
+                            color = Color(category.colorArgb)
+                        )
+                    }
                 )
             }
         }
@@ -557,7 +562,8 @@ private fun YandexMapView(
  */
 private fun categoryMarkerBitmap(context: Context, category: NeedCategory): Bitmap {
     val density = context.resources.displayMetrics.density
-    val sizePx = (34 * density).toInt().coerceAtLeast(1)
+    // 24dp — на 30% меньше прежних 34dp.
+    val sizePx = (24 * density).toInt().coerceAtLeast(1)
     val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
     val center = sizePx / 2f
@@ -570,7 +576,7 @@ private fun categoryMarkerBitmap(context: Context, category: NeedCategory): Bitm
     canvas.drawCircle(center, center, center - strokeWidth, fillPaint)
 
     val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFF2E7D6B.toInt()
+        color = category.colorArgb.toInt()
         style = Paint.Style.STROKE
         this.strokeWidth = strokeWidth
     }
@@ -609,7 +615,7 @@ private fun renderPlaceMarkers(
                 place.name,
                 TextStyle().apply {
                     size = 9f
-                    color = LABEL_COLOR
+                    color = place.category.colorArgb.toInt()
                     outlineWidth = 2f
                     placement = TextStyle.Placement.BOTTOM
                     offset = 2f
@@ -632,12 +638,22 @@ private fun PlaceCard(place: PlacePoint, onClick: () -> Unit) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    "${place.category.emoji} ${place.name}",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.weight(1f)
-                )
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "${place.category.emoji} ${place.name}",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    // Значок круглосуточной работы — только для продуктовых и аптек:
+                    // именно там это важно посреди ночи.
+                    if (place.isOpen24 && place.category in ROUND_THE_CLOCK_CATEGORIES) {
+                        Spacer(Modifier.width(6.dp))
+                        Badge24(color = Color(place.category.colorArgb))
+                    }
+                }
                 Text("${place.distanceKm} км", style = MaterialTheme.typography.bodySmall)
             }
 
@@ -669,5 +685,26 @@ private fun PlaceCard(place: PlacePoint, onClick: () -> Unit) {
                 }
             }
         }
+    }
+}
+
+/** Категории, для которых круглосуточный график действительно важен. */
+private val ROUND_THE_CLOCK_CATEGORIES = setOf(NeedCategory.GROCERY, NeedCategory.PHARMACY)
+
+/** Значок «24» — работает круглосуточно. */
+@Composable
+private fun Badge24(color: Color) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(4.dp))
+            .background(color)
+            .padding(horizontal = 5.dp, vertical = 1.dp)
+    ) {
+        Text(
+            "24",
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            color = Color.White
+        )
     }
 }

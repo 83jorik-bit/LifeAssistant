@@ -41,15 +41,16 @@ data class MapUiState(
 }
 
 private val SEARCHABLE_CATEGORIES = listOf(
-    NeedCategory.PHARMACY,
     NeedCategory.GROCERY,
-    NeedCategory.CLINIC,
+    NeedCategory.CAFE,
+    NeedCategory.PHARMACY,
+    NeedCategory.CLOTHING,
     NeedCategory.BEAUTY,
     NeedCategory.PICKUP_POINT,
-    NeedCategory.CAFE,
-    NeedCategory.CLOTHING,
+    NeedCategory.ATM,
+    NeedCategory.TRANSPORT,
     NeedCategory.EDUCATION,
-    NeedCategory.TRANSPORT
+    NeedCategory.CLINIC
 )
 
 class MapViewModel(application: Application) : AndroidViewModel(application) {

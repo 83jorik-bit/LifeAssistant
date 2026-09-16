@@ -16,6 +16,7 @@ import com.yandex.mapkit.search.SearchOptions
 import com.yandex.mapkit.search.SearchType
 import com.yandex.mapkit.search.Session
 import com.yandex.mapkit.search.ToponymObjectMetadata
+import com.yandex.mapkit.uri.UriObjectMetadata
 import com.yandex.runtime.Error
 import kotlin.coroutines.resume
 import kotlinx.coroutines.async
@@ -68,15 +69,26 @@ object YandexSearchRepository {
      * «кафе». Несколько запросов с объединением и удалением дублей закрывают эти пробелы.
      */
     private val CATEGORY_QUERIES: Map<NeedCategory, List<String>> = mapOf(
-        NeedCategory.PHARMACY to listOf("аптека"),
         NeedCategory.GROCERY to listOf("продукты", "супермаркет", "магазин у дома"),
-        NeedCategory.CLINIC to listOf("клиника", "поликлиника", "медицинский центр"),
+        NeedCategory.CAFE to listOf("кафе", "ресторан", "кофейня", "кофе с собой", "пекарня"),
+        NeedCategory.PHARMACY to listOf("аптека"),
+        NeedCategory.CLOTHING to listOf("магазин одежды", "обувной магазин"),
         NeedCategory.BEAUTY to listOf("салон красоты", "парикмахерская"),
         NeedCategory.PICKUP_POINT to listOf("пункт выдачи заказов", "постамат"),
-        NeedCategory.CAFE to listOf("кафе", "ресторан", "кофейня", "кофе с собой", "пекарня"),
-        NeedCategory.CLOTHING to listOf("магазин одежды", "обувной магазин"),
+        NeedCategory.ATM to listOf("банкомат"),
+        // Транспорт: наземный, метро, пригородные поезда и водный.
+        NeedCategory.TRANSPORT to listOf(
+            "остановка общественного транспорта",
+            "трамвайная остановка",
+            "станция метро",
+            "железнодорожная станция",
+            "платформа электричек",
+            "автовокзал",
+            "речной вокзал",
+            "причал"
+        ),
         NeedCategory.EDUCATION to listOf("школа", "детский сад", "колледж", "курсы"),
-        NeedCategory.TRANSPORT to listOf("остановка общественного транспорта", "станция метро")
+        NeedCategory.CLINIC to listOf("клиника", "поликлиника", "медицинский центр")
     )
 
     /**
@@ -219,7 +231,24 @@ object YandexSearchRepository {
                 ?.mapNotNull { it.name }
                 ?.takeIf { it.isNotEmpty() }
                 ?.joinToString(", "),
+            isOpen24 = isRoundTheClock(metadata?.workingHours?.text),
+            // Собственный URI объекта. Для остановки он ведёт на карточку остановки,
+            // а не на организацию — именно там показываются проходящие маршруты.
+            yandexUri = metadataContainer.getItem(UriObjectMetadata::class.java)
+                ?.uris
+                ?.firstOrNull()
+                ?.value
         )
+    }
+
+    /**
+     * Круглосуточность определяем по тексту графика работы ("ежедневно, круглосуточно").
+     * Разбирать структуру расписания через WorkingHours.availabilities точнее, но текст
+     * Яндекс формирует сам и для русской выдачи он предсказуем.
+     */
+    private fun isRoundTheClock(workingHoursText: String?): Boolean {
+        val text = workingHoursText?.lowercase() ?: return false
+        return "круглосуточно" in text || "круглосуточн" in text || "24 часа" in text
     }
 
     private fun roundToOneDecimal(value: Double): Double = (value * 10).let { kotlin.math.round(it) } / 10.0
