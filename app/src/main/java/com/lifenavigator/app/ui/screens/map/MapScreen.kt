@@ -599,8 +599,10 @@ private fun renderPlaceMarkers(
         val icon = categoryIcons[place.category] ?: return@forEach
         val placemark = collection.addPlacemark(Point(place.latitude, place.longitude), icon)
         // По идентификатору в userData находим место, когда по метке тапнули.
+        // Слушатель, как и у камеры, передаётся слабой ссылкой — сильную держим
+        // в remember выше, иначе метки перестанут реагировать на тапы.
         placemark.userData = place.id
-        placemark.addTapListener(tapListener)
+        placemark.addTapListener(WeakReference(tapListener))
 
         if (showLabels) {
             placemark.setText(
