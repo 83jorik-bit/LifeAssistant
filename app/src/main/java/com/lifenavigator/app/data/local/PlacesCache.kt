@@ -36,6 +36,8 @@ class PlacesCache(context: Context) {
                     put("phone", place.phone ?: JSONObject.NULL)
                     put("yandexOid", place.yandexOid ?: JSONObject.NULL)
                     put("categoryDescription", place.categoryDescription ?: JSONObject.NULL)
+                    put("isOpen24", place.isOpen24)
+                    put("yandexUri", place.yandexUri ?: JSONObject.NULL)
                 }
             )
         }
@@ -65,7 +67,9 @@ class PlacesCache(context: Context) {
                     workingHours = item.optStringOrNull("workingHours"),
                     phone = item.optStringOrNull("phone"),
                     yandexOid = item.optStringOrNull("yandexOid"),
-                    categoryDescription = item.optStringOrNull("categoryDescription")
+                    categoryDescription = item.optStringOrNull("categoryDescription"),
+                    isOpen24 = item.optBoolean("isOpen24", false),
+                    yandexUri = item.optStringOrNull("yandexUri")
                 )
             }
         } catch (e: Exception) {

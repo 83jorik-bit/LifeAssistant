@@ -91,27 +91,38 @@ object YandexMapsLauncher {
     }
 
     /**
-     * Открывает карточку организации — там будут отзывы, фотографии и полное описание.
-     * Если Яндекс не дал идентификатор организации, открываем поиск по названию рядом с точкой.
+     * Открывает объект в Яндекс Картах.
+     *
+     * Порядок попыток важен:
+     * 1. Собственный URI объекта (`ymapsbm1://…`), который отдаёт сам MapKit. Для остановки
+     *    это ссылка именно на карточку остановки — с проходящими маршрутами, а не на
+     *    организацию с отзывами. Ради этого пункта всё и затевалось.
+     * 2. Карточка организации по oid — для магазинов, кафе и прочего бизнеса.
+     * 3. Поиск по названию рядом с координатами — если ничего из этого нет.
+     *
+     * Обрабатывает ли приложение Яндекс Карт схему `ymapsbm1://`, в документации не описано,
+     * поэтому при неудаче мы просто проваливаемся на следующий вариант — хуже, чем было, не станет.
      */
     fun openPlaceCard(context: Context, place: PlacePoint) {
-        val oid = place.yandexOid
-        if (!oid.isNullOrBlank()) {
-            open(
-                context = context,
-                appUri = "yandexmaps://maps.yandex.ru/?oid=$oid",
-                // Веб-версия параметр oid официально не документирует, поэтому
-                // в браузере подстраховываемся поиском по названию рядом с координатами.
-                webUri = searchWebUrl(place)
+        val candidates = buildList {
+            place.yandexUri?.takeIf { it.isNotBlank() }?.let { add(it) }
+            place.yandexOid?.takeIf { it.isNotBlank() }?.let { add("yandexmaps://maps.yandex.ru/?oid=$it") }
+            add(
+                "yandexmaps://maps.yandex.ru/?ll=${place.longitude},${place.latitude}" +
+                    "&z=17&text=${Uri.encode(place.name)}"
             )
-        } else {
-            open(
-                context = context,
-                appUri = "yandexmaps://maps.yandex.ru/?ll=${place.longitude},${place.latitude}" +
-                    "&z=17&text=${Uri.encode(place.name)}",
-                webUri = searchWebUrl(place)
-            )
+            add(searchWebUrl(place))
         }
+
+        for (uri in candidates) {
+            try {
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(uri)))
+                return
+            } catch (e: ActivityNotFoundException) {
+                // пробуем следующий вариант
+            }
+        }
+        Toast.makeText(context, "Не нашлось приложения, чтобы открыть карты", Toast.LENGTH_LONG).show()
     }
 
     private fun searchWebUrl(place: PlacePoint): String =
