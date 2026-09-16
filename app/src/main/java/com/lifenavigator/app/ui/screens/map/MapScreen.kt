@@ -437,9 +437,18 @@ private fun PlaceDetailsSheet(
                 Spacer(Modifier.height(12.dp))
             }
 
+            // У городской остановки есть stopId — значит её расписание живёт в Яндекс Картах,
+            // и туда можно уйти сразу, без промежуточного экрана. У вокзалов и станций
+            // stopId обычно нет, зато есть данные в Яндекс Расписаниях — их показываем у себя.
+            val cityStopId = YandexMapsLauncher.stopIdOf(place)
+
             OutlinedButton(
                 onClick = {
-                    if (isTransport) onShowSchedule() else YandexMapsLauncher.openPlaceCard(context, place)
+                    when {
+                        !isTransport -> YandexMapsLauncher.openPlaceCard(context, place)
+                        cityStopId != null -> YandexMapsLauncher.openPlaceCard(context, place)
+                        else -> onShowSchedule()
+                    }
                 },
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -450,7 +459,7 @@ private fun PlaceDetailsSheet(
                 Text(if (isTransport) "Расписание и маршруты" else "Отзывы и фото в Яндекс Картах")
             }
 
-            if (isTransport) {
+            if (isTransport && cityStopId == null) {
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(
                     onClick = { YandexMapsLauncher.openPlaceCard(context, place) },
@@ -463,8 +472,12 @@ private fun PlaceDetailsSheet(
             Spacer(Modifier.height(8.dp))
             Text(
                 if (isTransport) {
-                    "Какие маршруты проходят через эту остановку и когда будет ближайший транспорт — " +
-                        "видно в карточке остановки в Яндекс Картах."
+                    if (cityStopId != null) {
+                        "Откроется карточка остановки в Яндекс Картах сразу на прибытии транспорта."
+                    } else {
+                        "Для вокзалов и станций расписание показывается прямо здесь, по данным " +
+                            "Яндекс Расписаний."
+                    }
                 } else {
                     "Тексты отзывов и фотографии MapKit SDK не передаёт — их можно посмотреть " +
                         "в приложении Яндекс Карты по кнопке выше."
