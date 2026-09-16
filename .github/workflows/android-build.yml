@@ -24,8 +24,10 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Create local.properties with MapKit key
-        run: echo "MAPKIT_API_KEY=${{ secrets.MAPKIT_API_KEY }}" > local.properties
+      - name: Create local.properties with API keys
+        run: |
+          echo "MAPKIT_API_KEY=${{ secrets.MAPKIT_API_KEY }}" > local.properties
+          echo "RASP_API_KEY=${{ secrets.RASP_API_KEY }}" >> local.properties
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4

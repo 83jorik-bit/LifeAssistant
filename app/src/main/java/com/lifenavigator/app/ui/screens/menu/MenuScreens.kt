@@ -75,7 +75,7 @@ fun SettingsSheet(
                     FilterChip(
                         selected = currentRadiusMeters == radius,
                         onClick = { onRadiusSelected(radius) },
-                        label = { Text("${(radius / 1000).toInt()} км") }
+                        label = { Text(formatRadius(radius)) }
                     )
                 }
             }
@@ -90,3 +90,11 @@ fun SettingsSheet(
         }
     }
 }
+
+/** «500 м» для сотен метров и «2 км» для километров — без «0 км». */
+private fun formatRadius(radiusMeters: Float): String =
+    if (radiusMeters < 1000f) {
+        "${radiusMeters.toInt()} м"
+    } else {
+        "${(radiusMeters / 1000).toInt()} км"
+    }

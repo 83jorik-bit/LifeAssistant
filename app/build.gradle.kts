@@ -14,6 +14,7 @@ val localProperties = Properties().apply {
     }
 }
 val mapkitApiKey: String = localProperties.getProperty("MAPKIT_API_KEY") ?: ""
+val raspApiKey: String = localProperties.getProperty("RASP_API_KEY") ?: ""
 
 android {
     namespace = "com.lifenavigator.app"
@@ -27,6 +28,7 @@ android {
         versionName = "0.1.0-mvp"
 
         buildConfigField("String", "MAPKIT_API_KEY", "\"$mapkitApiKey\"")
+        buildConfigField("String", "RASP_API_KEY", "\"$raspApiKey\"")
     }
 
     // Постоянный ключ подписи для debug-сборок.

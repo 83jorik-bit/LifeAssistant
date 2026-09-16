@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ConfirmationNumber
 import androidx.compose.material.icons.filled.LocalTaxi
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MyLocation
@@ -63,14 +64,21 @@ import java.lang.ref.WeakReference
 private val MOSCOW_CENTER = Point(55.7530, 37.6215)
 
 /**
- * Стиль карты: прячем чужие точки интереса (магазины, кафе, клиники и т. д.),
- * чтобы на карте остались только те места, что показаны в списке под ней.
+ * Стиль карты: прячем чужие точки интереса и подписи транспорта, чтобы на карте
+ * остались только те места, что показаны в списке под ней.
  *
- * Подложка — дороги, дома, названия улиц и районов — остаётся нетронутой:
- * выключается только слой `poi`.
+ * Почему правил несколько: скрытия точек (`types: point`) оказалось мало — на большом
+ * приближении названия станций и части остановок всё равно проступали. По документации
+ * подписи — это отдельный элемент, поэтому они гасятся явно через `elements: "label"`.
+ * Тег `transit_location` — станции метро, остановки и входы; `transit` — транспорт целиком.
+ *
+ * Линии транспорта, дороги, дома и названия улиц не трогаются.
  */
 private const val HIDE_POI_STYLE =
-    """[{"types":"point","tags":{"all":["poi"]},"stylers":{"visibility":"off"}}]"""
+    """[{"types":"point","tags":{"all":["poi"]},"stylers":{"visibility":"off"}},""" +
+        """{"types":"point","tags":{"all":["transit"]},"stylers":{"visibility":"off"}},""" +
+        """{"tags":{"any":["transit_location"]},"elements":"label","stylers":{"visibility":"off"}},""" +
+        """{"tags":{"any":["transit"]},"elements":"label","stylers":{"visibility":"off"}}]"""
 
 /**
  * Начиная с какого зума показывать подписи. Пока карта обзорная, видны только
@@ -276,7 +284,20 @@ fun MapScreen(viewModel: MapViewModel = viewModel()) {
         PlaceDetailsSheet(
             place = place,
             userPoint = state.userPoint,
+            onShowSchedule = {
+                viewModel.dismissPlaceDetails()
+                viewModel.openSchedule(place)
+            },
             onDismiss = { viewModel.dismissPlaceDetails() }
+        )
+    }
+
+    state.schedulePlace?.let { place ->
+        ScheduleSheet(
+            place = place,
+            isLoading = state.isScheduleLoading,
+            result = state.scheduleResult,
+            onDismiss = { viewModel.dismissSchedule() }
         )
     }
 
@@ -302,6 +323,7 @@ fun MapScreen(viewModel: MapViewModel = viewModel()) {
 private fun PlaceDetailsSheet(
     place: PlacePoint,
     userPoint: Point?,
+    onShowSchedule: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -416,10 +438,26 @@ private fun PlaceDetailsSheet(
             }
 
             OutlinedButton(
-                onClick = { YandexMapsLauncher.openPlaceCard(context, place) },
+                onClick = {
+                    if (isTransport) onShowSchedule() else YandexMapsLauncher.openPlaceCard(context, place)
+                },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(if (isTransport) "Маршруты" else "Отзывы и фото в Яндекс Картах")
+                if (isTransport) {
+                    Icon(Icons.Filled.ConfirmationNumber, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                }
+                Text(if (isTransport) "Расписание и маршруты" else "Отзывы и фото в Яндекс Картах")
+            }
+
+            if (isTransport) {
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = { YandexMapsLauncher.openPlaceCard(context, place) },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Открыть остановку в Яндекс Картах")
+                }
             }
 
             Spacer(Modifier.height(8.dp))
