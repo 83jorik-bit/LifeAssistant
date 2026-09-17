@@ -87,3 +87,15 @@ fun markerStyleFor(place: PlacePoint): MarkerStyle {
 fun allMarkerStyles(): List<MarkerStyle> =
     NeedCategory.entries.map { MarkerStyle(it.name, it.emoji, it.colorArgb) } +
         TransportKind.entries.map { MarkerStyle("TRANSPORT_${it.name}", it.glyph, it.markerColorArgb) }
+
+/**
+ * Идентификатор транспортной остановки (`stop__9643291`) внутри URI объекта.
+ *
+ * Появляется только у объектов, найденных с типом поиска TRANSIT. У организации
+ * с тем же названием его нет — и именно поэтому раньше вместо карточки остановки
+ * с расписанием открывалась карточка организации без него.
+ */
+private val STOP_ID_REGEX = Regex("stop__[A-Za-z0-9_-]+")
+
+val PlacePoint.transitStopId: String?
+    get() = yandexUri?.let { STOP_ID_REGEX.find(it)?.value }

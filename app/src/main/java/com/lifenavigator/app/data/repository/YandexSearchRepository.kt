@@ -2,6 +2,7 @@ package com.lifenavigator.app.data.repository
 
 import com.lifenavigator.app.data.model.NeedCategory
 import com.lifenavigator.app.data.model.PlacePoint
+import com.lifenavigator.app.data.model.transitStopId
 import com.yandex.mapkit.GeoObject
 import com.yandex.mapkit.geometry.BoundingBox
 import com.yandex.mapkit.geometry.Geometry
@@ -97,7 +98,10 @@ object YandexSearchRepository {
      */
     private fun searchTypesFor(category: NeedCategory): Int =
         if (category == NeedCategory.TRANSPORT) {
-            SearchType.GEO.value or SearchType.BIZ.value
+            // TRANSIT — ключевой тип: именно он возвращает сам объект остановки
+            // (с идентификатором stop__…), а не одноимённую организацию.
+            // Без него Яндекс отдавал карточку организации, где расписания нет вовсе.
+            SearchType.TRANSIT.value or SearchType.GEO.value or SearchType.BIZ.value
         } else {
             SearchType.BIZ.value
         }
@@ -122,6 +126,9 @@ object YandexSearchRepository {
                 // Одна организация попадает в выдачу сразу по нескольким формулировкам —
                 // убираем повторы (id строится на идентификаторе организации либо координатах).
                 .distinctBy { it.id }
+                // Остановка приходит дважды: как транспортный объект и как одноимённая
+                // организация. Оставляем транспортный — только у него есть расписание.
+                .let(::preferTransitObjects)
                 // Геометрия в запросе для Яндекса — подсказка о том, где искать, а не жёсткий
                 // фильтр: особенно для топонимов (остановки, станции) он спокойно возвращает
                 // объекты далеко за пределами области. Поэтому режем по фактическому
@@ -130,6 +137,21 @@ object YandexSearchRepository {
                 .sortedBy { it.distanceKm }
         }
     }
+
+    /**
+     * Схлопывает дубли «остановка + одноимённая организация» в одну запись,
+     * оставляя ту, у которой есть идентификатор остановки.
+     */
+    private fun preferTransitObjects(places: List<PlacePoint>): List<PlacePoint> =
+        places
+            .groupBy { place ->
+                // Ключ — название плюс огрублённые координаты: у остановки и организации
+                // они совпадают, а точные координаты могут отличаться на пару метров.
+                val lat = kotlin.math.round(place.latitude * 1000) / 1000.0
+                val lon = kotlin.math.round(place.longitude * 1000) / 1000.0
+                "${place.name.lowercase()}@$lat,$lon"
+            }
+            .map { (_, group) -> group.firstOrNull { it.transitStopId != null } ?: group.first() }
 
     private suspend fun runQuery(
         userPoint: Point,
