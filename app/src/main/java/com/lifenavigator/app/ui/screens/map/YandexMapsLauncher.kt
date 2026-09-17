@@ -8,6 +8,7 @@ import android.util.Log
 import android.widget.Toast
 import com.lifenavigator.app.data.model.NeedCategory
 import com.lifenavigator.app.data.model.PlacePoint
+import com.lifenavigator.app.data.model.transitStopId
 import com.yandex.mapkit.geometry.Point
 
 /**
@@ -94,23 +95,8 @@ object YandexMapsLauncher {
         )
     }
 
-    /**
-     * Идентификатор остановки внутри URI, который отдаёт MapKit.
-     *
-     * ВАЖНО: для остановок, найденных как топонимы, MapKit отдаёт непрозрачный URI вида
-     * `ymapsbm1://geo?data=…` — идентификатора остановки в нём нет, и регулярка ничего
-     * не находит. Поэтому прямая ссылка на вкладку расписания срабатывает не всегда.
-     */
-    private val STOP_ID_REGEX = Regex("stop__[A-Za-z0-9_]+")
-
-    /**
-     * Возвращает идентификатор остановки, если место — городская остановка транспорта.
-     * По нему можно открыть в Яндекс Картах сразу вкладку расписания.
-     */
-    fun stopIdOf(place: PlacePoint): String? {
-        if (place.category != NeedCategory.TRANSPORT) return null
-        return place.yandexUri?.let { STOP_ID_REGEX.find(it)?.value }
-    }
+    /** Идентификатор остановки берём из URI объекта (см. модель). */
+    fun stopIdOf(place: PlacePoint): String? = place.transitStopId
 
     /**
      * Ссылка, открывающая карточку остановки сразу на расписании.
@@ -128,13 +114,13 @@ object YandexMapsLauncher {
     /**
      * Открывает объект в Яндекс Картах.
      *
-     * Порядок выстроен по фактам из логов, а не по догадкам:
+     * Порядок выстроен по фактам, а не по догадкам:
      *
-     * 1. Карточка по `oid` — она же карточка остановки. Логи показали, что MapKit отдаёт
-     *    остановки как организации (`ymapsbm1://org/…`), и именно карточка организации
-     *    содержит вкладки «Обзор / Расписание / Фото / Отзывы». Раньше для транспорта
-     *    этот шаг пропускался, поэтому оставался только поиск — что и раздражало.
-     * 2. Ссылка по stopId, если он вдруг есть.
+     * 1. Карточка ОСТАНОВКИ по её stopId — единственный объект, у которого есть
+     *    вкладка «Расписание» с прибытием транспорта.
+     * 2. Карточка организации по oid — только для НЕтранспортных мест. Сравнение
+     *    скриншотов показало, что у остановки и одноимённой организации разные карточки:
+     *    у организации вкладки «Расписание» нет вовсе («Нет информации о расписании»).
      * 3. Поиск по названию — крайний случай.
      *
      * Схему `ymapsbm1://` из цепочки убрали: в логе видно, что её никто не открывает
@@ -146,14 +132,16 @@ object YandexMapsLauncher {
         val oid = place.yandexOid?.takeIf { it.isNotBlank() }
             ?: place.yandexUri?.let { OID_REGEX.find(it)?.groupValues?.get(1) }
 
+        val isTransport = place.category == NeedCategory.TRANSPORT
+
         val candidates = buildList {
+            // Карточка остановки: у неё есть вкладка «Расписание» с прибытием транспорта.
             stopId?.let { add(stopScheduleUrl(place, it)) }
-            oid?.let {
-                // tab=schedule — догадка: в документации URL-схемы такого параметра нет.
-                // Неизвестные параметры приложение обычно игнорирует, поэтому худшее,
-                // что будет — карточка откроется на «Обзоре», как сейчас.
-                add("yandexmaps://maps.yandex.ru/?oid=$it&tab=schedule")
-                add("yandexmaps://maps.yandex.ru/?oid=$it")
+            // Карточка организации. Для остановок НЕ используем: скриншоты показали,
+            // что одноимённая организация («Остановка общественного транспорта») —
+            // это другой объект, у которого вкладки «Расписание» нет вообще.
+            if (!isTransport) {
+                oid?.let { add("yandexmaps://maps.yandex.ru/?oid=$it") }
             }
             add(
                 "yandexmaps://maps.yandex.ru/?ll=${place.longitude},${place.latitude}" +
