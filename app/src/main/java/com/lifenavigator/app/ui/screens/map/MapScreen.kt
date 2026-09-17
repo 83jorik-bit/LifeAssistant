@@ -45,7 +45,11 @@ import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
 import com.lifenavigator.app.data.model.NeedCategory
+import com.lifenavigator.app.data.model.MarkerStyle
 import com.lifenavigator.app.data.model.PlacePoint
+import com.lifenavigator.app.data.model.allMarkerStyles
+import com.lifenavigator.app.data.model.hasIntercitySchedule
+import com.lifenavigator.app.data.model.markerStyleFor
 import com.lifenavigator.app.ui.screens.menu.SettingsSheet
 import com.lifenavigator.app.ui.screens.menu.SignInDialog
 import com.yandex.mapkit.Animation
@@ -337,7 +341,7 @@ private fun PlaceDetailsSheet(
                 .padding(bottom = 32.dp)
         ) {
             Text(
-                "${place.category.emoji} ${place.name}",
+                "${markerStyleFor(place).glyph} ${place.name}",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold
             )
@@ -437,17 +441,19 @@ private fun PlaceDetailsSheet(
                 Spacer(Modifier.height(12.dp))
             }
 
-            // У городской остановки есть stopId — значит её расписание живёт в Яндекс Картах,
-            // и туда можно уйти сразу, без промежуточного экрана. У вокзалов и станций
-            // stopId обычно нет, зато есть данные в Яндекс Расписаниях — их показываем у себя.
-            val cityStopId = YandexMapsLauncher.stopIdOf(place)
+            // Городские остановки и метро отправляем сразу в Яндекс Карты: расписания
+            // городского транспорта в Яндекс Расписаниях нет в принципе, и попытка его
+            // запросить заканчивалась бесполезным «рейсов больше нет».
+            // Вокзалы, ж/д станции и причалы — наоборот, есть в Расписаниях, там показываем
+            // реальные времена прямо в приложении.
+            val useRaspSchedule = place.hasIntercitySchedule()
 
             OutlinedButton(
                 onClick = {
                     when {
                         !isTransport -> YandexMapsLauncher.openPlaceCard(context, place)
-                        cityStopId != null -> YandexMapsLauncher.openPlaceCard(context, place)
-                        else -> onShowSchedule()
+                        useRaspSchedule -> onShowSchedule()
+                        else -> YandexMapsLauncher.openPlaceCard(context, place)
                     }
                 },
                 modifier = Modifier.fillMaxWidth()
@@ -459,7 +465,7 @@ private fun PlaceDetailsSheet(
                 Text(if (isTransport) "Расписание и маршруты" else "Отзывы и фото в Яндекс Картах")
             }
 
-            if (isTransport && cityStopId == null) {
+            if (isTransport && useRaspSchedule) {
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(
                     onClick = { YandexMapsLauncher.openPlaceCard(context, place) },
@@ -472,11 +478,12 @@ private fun PlaceDetailsSheet(
             Spacer(Modifier.height(8.dp))
             Text(
                 if (isTransport) {
-                    if (cityStopId != null) {
-                        "Откроется карточка остановки в Яндекс Картах сразу на прибытии транспорта."
+                    if (useRaspSchedule) {
+                        "Для вокзалов, станций и причалов расписание показывается прямо здесь, " +
+                            "по данным Яндекс Расписаний."
                     } else {
-                        "Для вокзалов и станций расписание показывается прямо здесь, по данным " +
-                            "Яндекс Расписаний."
+                        "Маршруты и прибытие городского транспорта смотрите в Яндекс Картах: " +
+                            "в Расписаниях данных о городских остановках нет."
                     }
                 } else {
                     "Тексты отзывов и фотографии MapKit SDK не передаёт — их можно посмотреть " +
@@ -526,9 +533,9 @@ private fun YandexMapView(
 
     // Значки категорий рисуем один раз и переиспользуем: создавать растр на каждую
     // метку при каждой перерисовке — лишняя работа на ровном месте.
-    val categoryIcons = remember(context) {
-        NeedCategory.entries.associateWith { category ->
-            ImageProvider.fromBitmap(categoryMarkerBitmap(context, category))
+    val markerIcons = remember(context) {
+        allMarkerStyles().associate { style ->
+            style.key to ImageProvider.fromBitmap(markerBitmap(context, style))
         }
     }
 
@@ -566,7 +573,7 @@ private fun YandexMapView(
             }
         },
         update = { view ->
-            renderPlaceMarkers(view.map.mapObjects, places, categoryIcons, showLabels, tapListener)
+            renderPlaceMarkers(view.map.mapObjects, places, markerIcons, showLabels, tapListener)
         }
     )
 
@@ -611,7 +618,7 @@ private fun YandexMapView(
  * Эмодзи берём из самой категории — так значок сразу узнаваем и не нужно
  * рисовать девять векторных иконок вручную.
  */
-private fun categoryMarkerBitmap(context: Context, category: NeedCategory): Bitmap {
+private fun markerBitmap(context: Context, style: MarkerStyle): Bitmap {
     val density = context.resources.displayMetrics.density
     // 24dp — на 30% меньше прежних 34dp.
     val sizePx = (24 * density).toInt().coerceAtLeast(1)
@@ -627,8 +634,8 @@ private fun categoryMarkerBitmap(context: Context, category: NeedCategory): Bitm
     canvas.drawCircle(center, center, center - strokeWidth, fillPaint)
 
     val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = category.colorArgb.toInt()
-        style = Paint.Style.STROKE
+        color = style.colorArgb.toInt()
+        this.style = Paint.Style.STROKE
         this.strokeWidth = strokeWidth
     }
     canvas.drawCircle(center, center, center - strokeWidth, borderPaint)
@@ -639,7 +646,7 @@ private fun categoryMarkerBitmap(context: Context, category: NeedCategory): Bitm
     }
     val metrics = textPaint.fontMetrics
     val baseline = center - (metrics.ascent + metrics.descent) / 2f
-    canvas.drawText(category.emoji, center, baseline, textPaint)
+    canvas.drawText(style.glyph, center, baseline, textPaint)
 
     return bitmap
 }
@@ -647,13 +654,13 @@ private fun categoryMarkerBitmap(context: Context, category: NeedCategory): Bitm
 private fun renderPlaceMarkers(
     collection: MapObjectCollection,
     places: List<PlacePoint>,
-    categoryIcons: Map<NeedCategory, ImageProvider>,
+    markerIcons: Map<String, ImageProvider>,
     showLabels: Boolean,
     tapListener: MapObjectTapListener
 ) {
     collection.clear()
     places.forEach { place ->
-        val icon = categoryIcons[place.category] ?: return@forEach
+        val icon = markerIcons[markerStyleFor(place).key] ?: return@forEach
         val placemark = collection.addPlacemark(Point(place.latitude, place.longitude), icon)
         // По идентификатору в userData находим место, когда по метке тапнули.
         // Слушатель, как и у камеры, передаётся слабой ссылкой — сильную держим
@@ -666,7 +673,7 @@ private fun renderPlaceMarkers(
                 place.name,
                 TextStyle().apply {
                     size = 9f
-                    color = place.category.colorArgb.toInt()
+                    color = markerStyleFor(place).colorArgb.toInt()
                     outlineWidth = 2f
                     placement = TextStyle.Placement.BOTTOM
                     offset = 2f
@@ -694,7 +701,7 @@ private fun PlaceCard(place: PlacePoint, onClick: () -> Unit) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        "${place.category.emoji} ${place.name}",
+                        "${markerStyleFor(place).glyph} ${place.name}",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold
                     )

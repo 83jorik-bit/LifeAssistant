@@ -52,8 +52,18 @@ sealed class ScheduleResult {
  */
 object RaspRepository {
 
-    private const val BASE_URL = "https://api.rasp.yandex-net.ru/v3.0"
-    private const val TIMEOUT_MS = 10_000
+    /**
+     * Основной домен и запасной. Яндекс сам предупреждает, что доступность
+     * api.rasp.yandex.net не гарантируется и рекомендует yandex-net.ru — но если
+     * основной молчит, имеет смысл попробовать второй, прежде чем показывать ошибку.
+     */
+    private val HOSTS = listOf(
+        "https://api.rasp.yandex-net.ru/v3.0",
+        "https://api.rasp.yandex.net/v3.0"
+    )
+    // 10 секунд не хватало: запрос расписания станции возвращает до сотни рейсов,
+    // и на медленной сети он не укладывался — пользователь видел «timeout».
+    private const val TIMEOUT_MS = 25_000
 
     /** Сколько ближайших рейсов показываем в карточке. */
     private const val MAX_DEPARTURES = 12
@@ -84,7 +94,14 @@ object RaspRepository {
                 )
             )
         } catch (e: Exception) {
-            ScheduleResult.Error(e.message ?: "Не удалось получить расписание")
+            val readable = when (e) {
+                is java.net.SocketTimeoutException ->
+                    "Сервис расписаний не ответил вовремя. Попробуйте ещё раз."
+                is java.net.UnknownHostException ->
+                    "Нет связи с сервисом расписаний. Проверьте интернет."
+                else -> e.message ?: "Не удалось получить расписание"
+            }
+            ScheduleResult.Error(readable)
         }
     }
 
@@ -105,13 +122,14 @@ object RaspRepository {
      * станцию либо с совпадающим названием, либо совсем рядом (до 300 м).
      */
     private fun findStation(latitude: Double, longitude: Double, placeName: String): Station? {
-        val url = "$BASE_URL/nearest_stations/?" +
+        val path = "/nearest_stations/?" +
             "apikey=${BuildConfig.RASP_API_KEY}" +
             "&format=json&lang=ru_RU" +
             "&lat=$latitude&lng=$longitude" +
-            "&distance=2&limit=50"
+            // 20 станций достаточно, а ответ заметно легче, чем на 50.
+            "&distance=2&limit=20"
 
-        val stations = JSONObject(httpGet(url)).optJSONArray("stations") ?: return null
+        val stations = JSONObject(httpGet(path)).optJSONArray("stations") ?: return null
         val normalizedPlace = normalize(placeName)
 
         var byName: Station? = null
@@ -161,13 +179,13 @@ object RaspRepository {
 
     private fun loadDepartures(stationCode: String): List<Departure> {
         val today = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)
-        val url = "$BASE_URL/schedule/?" +
+        val path = "/schedule/?" +
             "apikey=${BuildConfig.RASP_API_KEY}" +
             "&format=json&lang=ru_RU" +
             "&station=${URLEncoder.encode(stationCode, "UTF-8")}" +
             "&date=$today&event=departure"
 
-        val schedule = JSONObject(httpGet(url)).optJSONArray("schedule") ?: return emptyList()
+        val schedule = JSONObject(httpGet(path)).optJSONArray("schedule") ?: return emptyList()
         val now = OffsetDateTime.now()
         val result = mutableListOf<Departure>()
 
@@ -196,11 +214,35 @@ object RaspRepository {
         return result
     }
 
-    private fun httpGet(url: String): String {
+    /**
+     * [path] — часть запроса после версии API, например "/schedule/?apikey=…".
+     *
+     * Две повторные попытки на каждый домен: первый запрос нередко упирается в холодное
+     * соединение и отваливается по таймауту, хотя повтор проходит нормально. Если домен
+     * не отвечает совсем — пробуем запасной.
+     */
+    private fun httpGet(path: String): String {
+        var lastError: Exception? = null
+
+        for (host in HOSTS) {
+            repeat(2) { attempt ->
+                try {
+                    return httpGetOnce(host + path)
+                } catch (e: Exception) {
+                    lastError = e
+                    if (attempt == 0) Thread.sleep(500)
+                }
+            }
+        }
+        throw lastError ?: IllegalStateException("Не удалось выполнить запрос")
+    }
+
+    private fun httpGetOnce(url: String): String {
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
             connectTimeout = TIMEOUT_MS
             readTimeout = TIMEOUT_MS
+            setRequestProperty("Accept", "application/json")
         }
         try {
             val code = connection.responseCode
