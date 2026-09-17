@@ -69,7 +69,7 @@ fun ScheduleSheet(
 
                     if (schedule.departures.isEmpty()) {
                         Text(
-                            "На сегодня рейсов больше нет.",
+                            "Рейсов не нашлось ни на сегодня, ни на завтра.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -148,12 +148,20 @@ fun ScheduleSheet(
 @Composable
 private fun DepartureRow(departure: Departure) {
     Row(Modifier.fillMaxWidth()) {
-        Text(
-            departure.time,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.width(60.dp)
-        )
+        Column(Modifier.width(64.dp)) {
+            Text(
+                departure.time,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            if (departure.isTomorrow) {
+                Text(
+                    "завтра",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
         Column(Modifier.weight(1f)) {
             Text(departure.title, style = MaterialTheme.typography.bodyMedium)
             Text(

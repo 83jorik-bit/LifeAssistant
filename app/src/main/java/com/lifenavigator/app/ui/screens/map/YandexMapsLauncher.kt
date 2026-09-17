@@ -4,6 +4,7 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.util.Log
 import android.widget.Toast
 import com.lifenavigator.app.data.model.NeedCategory
 import com.lifenavigator.app.data.model.PlacePoint
@@ -20,6 +21,8 @@ import com.yandex.mapkit.geometry.Point
  * Если приложение Яндекс Карт не установлено — открываем тот же сценарий в браузере.
  */
 object YandexMapsLauncher {
+
+    private const val LOG_TAG = "LifeNavigator"
 
     /**
      * Типы маршрута, которые передаются в приложение Яндекс Карт параметром `rtt`.
@@ -158,6 +161,12 @@ object YandexMapsLauncher {
             add(searchWebUrl(place))
         }
 
+        // Диагностика: по этим строкам в logcat видно, что именно MapKit отдал по объекту
+        // и какую ссылку мы в итоге открыли. Без них причину «опять открылся поиск»
+        // приходится угадывать.
+        Log.d(LOG_TAG, "openPlaceCard name=${place.name} rubric=${place.categoryDescription} " +
+            "uri=${place.yandexUri} oid=${place.yandexOid} stopId=$stopId")
+
         openFirstAvailable(context, candidates)
     }
 
@@ -165,9 +174,10 @@ object YandexMapsLauncher {
         for (uri in uris) {
             try {
                 context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(uri)))
+                Log.d(LOG_TAG, "opened: $uri")
                 return
             } catch (e: ActivityNotFoundException) {
-                // пробуем следующий вариант
+                Log.d(LOG_TAG, "no app for: $uri")
             }
         }
         Toast.makeText(context, "Не нашлось приложения, чтобы открыть ссылку", Toast.LENGTH_LONG).show()
