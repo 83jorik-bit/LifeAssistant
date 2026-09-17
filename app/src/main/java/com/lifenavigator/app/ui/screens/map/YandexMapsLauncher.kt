@@ -92,8 +92,11 @@ object YandexMapsLauncher {
     }
 
     /**
-     * Идентификатор остановки внутри URI, который отдаёт MapKit
-     * (`ymapsbm1://transit/stop?id=stop__9680782`).
+     * Идентификатор остановки внутри URI, который отдаёт MapKit.
+     *
+     * ВАЖНО: для остановок, найденных как топонимы, MapKit отдаёт непрозрачный URI вида
+     * `ymapsbm1://geo?data=…` — идентификатора остановки в нём нет, и регулярка ничего
+     * не находит. Поэтому прямая ссылка на вкладку расписания срабатывает не всегда.
      */
     private val STOP_ID_REGEX = Regex("stop__[A-Za-z0-9_]+")
 
@@ -132,10 +135,21 @@ object YandexMapsLauncher {
         val stopId = stopIdOf(place)
 
         val candidates = buildList {
+            // Лучший вариант — прямая ссылка на расписание, но она требует stopId.
             stopId?.let { add(stopScheduleUrl(place, it)) }
             place.yandexUri?.takeIf { it.isNotBlank() }?.let { add(it) }
             if (!isTransport) {
                 place.yandexOid?.takeIf { it.isNotBlank() }?.let { add("yandexmaps://maps.yandex.ru/?oid=$it") }
+            }
+            if (isTransport) {
+                // Попытка попросить приложение открыть найденное как остановку.
+                // Параметр mode в официальной документации URL-схемы не описан — берём его
+                // из ссылок веб-версии Карт. Если приложение его проигнорирует, просто
+                // откроется карточка на обзоре, то есть не хуже прежнего.
+                add(
+                    "yandexmaps://maps.yandex.ru/?ll=${place.longitude},${place.latitude}" +
+                        "&z=18&mode=stop&text=${Uri.encode(place.name)}"
+                )
             }
             add(
                 "yandexmaps://maps.yandex.ru/?ll=${place.longitude},${place.latitude}" +
