@@ -618,35 +618,38 @@ private fun YandexMapView(
  * Эмодзи берём из самой категории — так значок сразу узнаваем и не нужно
  * рисовать девять векторных иконок вручную.
  */
-private fun markerBitmap(context: Context, style: MarkerStyle): Bitmap {
+private fun markerBitmap(context: Context, markerStyle: MarkerStyle): Bitmap {
     val density = context.resources.displayMetrics.density
     // 24dp — на 30% меньше прежних 34dp.
     val sizePx = (24 * density).toInt().coerceAtLeast(1)
     val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
     val center = sizePx / 2f
-    val strokeWidth = 2f * density
+    val borderWidth = 2f * density
 
     val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = android.graphics.Color.WHITE
         style = Paint.Style.FILL
     }
-    canvas.drawCircle(center, center, center - strokeWidth, fillPaint)
+    canvas.drawCircle(center, center, center - borderWidth, fillPaint)
 
     val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = style.colorArgb.toInt()
-        this.style = Paint.Style.STROKE
-        this.strokeWidth = strokeWidth
+        color = markerStyle.colorArgb.toInt()
+        style = Paint.Style.STROKE
+        strokeWidth = borderWidth
     }
-    canvas.drawCircle(center, center, center - strokeWidth, borderPaint)
+    canvas.drawCircle(center, center, center - borderWidth, borderPaint)
 
     val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textSize = sizePx * 0.5f
         textAlign = Paint.Align.CENTER
+        // Глиф метро — это буква «М», её красим в цвет метки; эмодзи цвет игнорируют.
+        color = markerStyle.colorArgb.toInt()
+        isFakeBoldText = true
     }
     val metrics = textPaint.fontMetrics
     val baseline = center - (metrics.ascent + metrics.descent) / 2f
-    canvas.drawText(style.glyph, center, baseline, textPaint)
+    canvas.drawText(markerStyle.glyph, center, baseline, textPaint)
 
     return bitmap
 }
