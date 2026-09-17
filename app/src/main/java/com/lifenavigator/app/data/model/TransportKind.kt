@@ -8,8 +8,8 @@ enum class TransportKind(val glyph: String, val markerColorArgb: Long) {
     /** Автобус, троллейбус, трамвай — городская остановка. */
     BUS("🚌", 0xFF1A3E8C),
 
-    /** Станция метро. Значок — красная «М», как эмблема метрополитена. */
-    METRO("М", 0xFFD0021B),
+    /** Станция метро. */
+    METRO("🚇", 0xFFD0021B),
 
     /** Ж/д станция, платформа, вокзал. */
     RAIL("🚂", 0xFF6D4C41),
@@ -19,23 +19,43 @@ enum class TransportKind(val glyph: String, val markerColorArgb: Long) {
 }
 
 /**
- * Определяет вид транспорта по названию и рубрике из Яндекса.
+ * Ищет слово целиком, а не как часть другого слова.
  *
- * Порядок проверок важен: «станция метро» содержит и «станци», и «метро», поэтому
- * метро проверяется раньше железной дороги.
+ * Это не придирка: подстрочный поиск давал ложные срабатывания на ровном месте.
+ * Рубрика «Остановка общественного транспорта» содержит «транспорта», внутри которого
+ * есть «порт» — и все обычные автобусные остановки получали значок кораблика.
+ * Аналогично «Спортивная» содержит «порт», а «Метро Котельники» — это название
+ * автобусной остановки, а вовсе не станция метро.
+ */
+private fun containsWord(text: String, vararg roots: String): Boolean =
+    roots.any { root -> Regex("(^|[^а-яёa-z])$root", RegexOption.IGNORE_CASE).containsMatchIn(text) }
+
+/**
+ * Определяет вид транспорта.
+ *
+ * Сначала смотрим рубрику Яндекса — она описывает сам объект («Станция метро»,
+ * «Железнодорожная станция», «Остановка общественного транспорта»). И только если рубрики
+ * нет, разбираем название: названия обманчивы — остановка «Метро Котельники» это автобус,
+ * а не метро.
  */
 fun PlacePoint.transportKind(): TransportKind? {
     if (category != NeedCategory.TRANSPORT) return null
 
-    val text = listOfNotNull(name, categoryDescription).joinToString(" ").lowercase()
-
-    return when {
-        "метро" in text || "мцк" in text || "мцд" in text -> TransportKind.METRO
-        listOf("причал", "пристан", "порт", "паром", "речн", "морск").any { it in text } -> TransportKind.WATER
-        listOf("вокзал", "железнодорож", "ж/д", "жд ", "платформ", "электричк", "станция")
-            .any { it in text } -> TransportKind.RAIL
-        else -> TransportKind.BUS
+    val rubric = categoryDescription?.lowercase().orEmpty()
+    if (rubric.isNotBlank()) {
+        kindFromText(rubric)?.let { return it }
     }
+    return kindFromText(name.lowercase()) ?: TransportKind.BUS
+}
+
+private fun kindFromText(text: String): TransportKind? = when {
+    // Остановка — всегда городской транспорт, даже если названа «Метро Котельники».
+    containsWord(text, "остановк", "автобус", "трамва", "троллейбус", "маршрутк") -> TransportKind.BUS
+    containsWord(text, "метро", "мцк", "мцд", "подземк") -> TransportKind.METRO
+    containsWord(text, "причал", "пристан", "порт", "паром", "речн", "морск", "судоход") -> TransportKind.WATER
+    containsWord(text, "вокзал", "железнодорож", "ж/д", "жд", "платформ", "электричк",
+        "станци", "поезд", "полустан") -> TransportKind.RAIL
+    else -> null
 }
 
 /**

@@ -14,6 +14,8 @@ import java.time.format.DateTimeFormatter
 /** Один рейс в расписании станции. */
 data class Departure(
     val time: String,
+    /** Рейс уже на завтра — сегодня рейсов не осталось. */
+    val isTomorrow: Boolean = false,
     val title: String,
     val transportType: String,
     val number: String?,
@@ -83,7 +85,13 @@ object RaspRepository {
             val station = findStation(latitude, longitude, placeName)
                 ?: return@withContext ScheduleResult.NotFound
 
-            val departures = loadDepartures(station.code)
+            // Вечером сегодняшние рейсы уже закончились, и пустой список выглядит
+            // как поломка. Поэтому если на сегодня ничего не осталось — показываем завтрашние.
+            val today = loadDepartures(station.code, LocalDate.now(), onlyFuture = true)
+            val departures = today.ifEmpty {
+                loadDepartures(station.code, LocalDate.now().plusDays(1), onlyFuture = false)
+                    .map { it.copy(isTomorrow = true) }
+            }
             ScheduleResult.Success(
                 StationSchedule(
                     stationTitle = station.title,
@@ -177,13 +185,16 @@ object RaspRepository {
         return null
     }
 
-    private fun loadDepartures(stationCode: String): List<Departure> {
-        val today = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)
+    private fun loadDepartures(
+        stationCode: String,
+        date: LocalDate,
+        onlyFuture: Boolean
+    ): List<Departure> {
         val path = "/schedule/?" +
             "apikey=${BuildConfig.RASP_API_KEY}" +
             "&format=json&lang=ru_RU" +
             "&station=${URLEncoder.encode(stationCode, "UTF-8")}" +
-            "&date=$today&event=departure"
+            "&date=${date.format(DateTimeFormatter.ISO_LOCAL_DATE)}&event=departure"
 
         val schedule = JSONObject(httpGet(path)).optJSONArray("schedule") ?: return emptyList()
         val now = OffsetDateTime.now()
@@ -193,8 +204,8 @@ object RaspRepository {
             val item = schedule.optJSONObject(i) ?: continue
             val departureRaw = item.optString("departure").takeIf { it.isNotBlank() } ?: continue
             val departureTime = runCatching { OffsetDateTime.parse(departureRaw) }.getOrNull() ?: continue
-            // Уже ушедшие рейсы не показываем.
-            if (departureTime.isBefore(now)) continue
+            // Уже ушедшие рейсы не показываем (для завтрашнего дня фильтр не нужен).
+            if (onlyFuture && departureTime.isBefore(now)) continue
 
             val thread = item.optJSONObject("thread")
             result += Departure(

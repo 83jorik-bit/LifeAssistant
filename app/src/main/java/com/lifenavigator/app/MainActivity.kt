@@ -3,6 +3,11 @@ package com.lifenavigator.app
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import com.lifenavigator.app.data.local.ThemeController
+import com.lifenavigator.app.data.local.ThemeMode
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -23,8 +28,15 @@ import com.lifenavigator.app.ui.theme.LifeNavigatorTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        ThemeController.load(this)
         setContent {
-            LifeNavigatorTheme {
+            val themeMode by ThemeController.mode.collectAsState()
+            val darkTheme = when (themeMode) {
+                ThemeMode.LIGHT -> false
+                ThemeMode.DARK -> true
+                ThemeMode.SYSTEM -> isSystemInDarkTheme()
+            }
+            LifeNavigatorTheme(darkTheme = darkTheme) {
                 LifeNavigatorApp()
             }
         }

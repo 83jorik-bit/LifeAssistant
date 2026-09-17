@@ -3,10 +3,15 @@ package com.lifenavigator.app.ui.screens.menu
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
 import com.lifenavigator.app.data.local.AppSettings
+import com.lifenavigator.app.data.local.ThemeController
+import com.lifenavigator.app.data.local.ThemeMode
 
 /**
  * Вход в аккаунт.
@@ -76,6 +81,22 @@ fun SettingsSheet(
                         selected = currentRadiusMeters == radius,
                         onClick = { onRadiusSelected(radius) },
                         label = { Text(formatRadius(radius)) }
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(24.dp))
+
+            Text("Оформление", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(10.dp))
+            val context = LocalContext.current
+            val currentTheme by ThemeController.mode.collectAsState()
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ThemeMode.entries.forEach { mode ->
+                    FilterChip(
+                        selected = currentTheme == mode,
+                        onClick = { ThemeController.set(context, mode) },
+                        label = { Text(mode.title) }
                     )
                 }
             }

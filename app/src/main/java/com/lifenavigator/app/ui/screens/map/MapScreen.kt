@@ -16,8 +16,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ConfirmationNumber
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.LocalTaxi
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MyLocation
@@ -67,6 +70,9 @@ import java.lang.ref.WeakReference
 
 private val MOSCOW_CENTER = Point(55.7530, 37.6215)
 
+/** Что занимает экран: и карта, и список; только карта; только список. */
+private enum class LayoutMode { SPLIT, MAP_ONLY, LIST_ONLY }
+
 /**
  * Стиль карты: прячем чужие точки интереса и подписи транспорта, чтобы на карте
  * остались только те места, что показаны в списке под ней.
@@ -107,6 +113,8 @@ fun MapScreen(viewModel: MapViewModel = viewModel()) {
     var userLocationLayer by remember { mutableStateOf<UserLocationLayer?>(null) }
     var mapViewRef by remember { mutableStateOf<MapView?>(null) }
 
+    var layoutMode by remember { mutableStateOf(LayoutMode.SPLIT) }
+    val listState = rememberLazyListState()
     var menuExpanded by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var showSignIn by remember { mutableStateOf(false) }
@@ -136,6 +144,12 @@ fun MapScreen(viewModel: MapViewModel = viewModel()) {
             hasAutoLoaded = true
             centerOnUser()
         }
+    }
+
+    // При смене набора категорий список начинают читать сначала — возвращаем его наверх,
+    // иначе пользователь остаётся где-то в середине уже другого списка.
+    LaunchedEffect(state.selectedCategories) {
+        listState.animateScrollToItem(0)
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -192,10 +206,17 @@ fun MapScreen(viewModel: MapViewModel = viewModel()) {
             }
         }
 
+        if (layoutMode != LayoutMode.LIST_ONLY) {
         Box(
-            Modifier
-                .fillMaxWidth()
-                .height(260.dp)
+            if (layoutMode == LayoutMode.MAP_ONLY) {
+                Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            } else {
+                Modifier
+                    .fillMaxWidth()
+                    .height(260.dp)
+            }
         ) {
             YandexMapView(
                 places = state.filteredPlaces,
@@ -220,7 +241,29 @@ fun MapScreen(viewModel: MapViewModel = viewModel()) {
             ) {
                 Icon(Icons.Filled.MyLocation, contentDescription = "Моя геолокация")
             }
+
+            // Развернуть карту на весь экран и обратно.
+            FilledTonalIconButton(
+                onClick = {
+                    layoutMode = if (layoutMode == LayoutMode.MAP_ONLY) {
+                        LayoutMode.SPLIT
+                    } else {
+                        LayoutMode.MAP_ONLY
+                    }
+                },
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(12.dp)
+            ) {
+                Icon(
+                    if (layoutMode == LayoutMode.MAP_ONLY) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
+                    contentDescription = if (layoutMode == LayoutMode.MAP_ONLY) "Свернуть карту" else "Карта на весь экран"
+                )
+            }
         }
+        }
+
+        if (layoutMode != LayoutMode.MAP_ONLY) {
 
         // Категории можно комбинировать: выбранные складываются, «Все» сбрасывает фильтр.
         LazyRow(
@@ -273,14 +316,51 @@ fun MapScreen(viewModel: MapViewModel = viewModel()) {
                 )
             }
         } else {
+            // Заголовок списка с кнопкой «на весь экран»: когда мест много,
+            // удобнее читать список без карты.
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    "Рядом: ${state.filteredPlaces.size}",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                IconButton(
+                    onClick = {
+                        layoutMode = if (layoutMode == LayoutMode.LIST_ONLY) {
+                            LayoutMode.SPLIT
+                        } else {
+                            LayoutMode.LIST_ONLY
+                        }
+                    }
+                ) {
+                    Icon(
+                        if (layoutMode == LayoutMode.LIST_ONLY) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
+                        contentDescription = if (layoutMode == LayoutMode.LIST_ONLY) {
+                            "Показать карту"
+                        } else {
+                            "Список на весь экран"
+                        }
+                    )
+                }
+            }
+
             LazyColumn(
-                contentPadding = PaddingValues(12.dp),
+                state = listState,
+                contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(state.filteredPlaces, key = { it.id }) { place ->
                     PlaceCard(place, onClick = { viewModel.selectPlace(place) })
                 }
             }
+        }
+
         }
     }
 

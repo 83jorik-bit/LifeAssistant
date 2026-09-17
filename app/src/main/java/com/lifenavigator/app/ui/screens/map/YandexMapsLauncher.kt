@@ -4,6 +4,7 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.util.Log
 import android.widget.Toast
 import com.lifenavigator.app.data.model.NeedCategory
 import com.lifenavigator.app.data.model.PlacePoint
@@ -20,6 +21,8 @@ import com.yandex.mapkit.geometry.Point
  * Если приложение Яндекс Карт не установлено — открываем тот же сценарий в браузере.
  */
 object YandexMapsLauncher {
+
+    private const val LOG_TAG = "LifeNavigator"
 
     /**
      * Типы маршрута, которые передаются в приложение Яндекс Карт параметром `rtt`.
@@ -119,37 +122,38 @@ object YandexMapsLauncher {
         "https://yandex.ru/maps/?ll=${place.longitude},${place.latitude}" +
             "&masstransit%5BstopId%5D=$stopId&mode=stop&z=18"
 
+    /** Идентификатор организации внутри URI вида `ymapsbm1://org?oid=1234567890`. */
+    private val OID_REGEX = Regex("oid=([0-9]+)")
+
     /**
      * Открывает объект в Яндекс Картах.
      *
-     * Порядок попыток важен:
-     * 1. Для городской остановки — сразу вкладка расписания по её stopId.
-     * 2. Собственный URI объекта (`ymapsbm1://…`), который отдаёт сам MapKit.
-     * 3. Карточка организации по oid — для магазинов, кафе и прочего бизнеса.
-     *    Для остановок этот шаг ПРОПУСКАЕТСЯ: часть станций заведена в Яндексе ещё и как
-     *    организация, и открытие по oid приводило на обзор с отзывами вместо расписания.
-     * 4. Поиск по названию рядом с координатами, затем веб-версия.
+     * Порядок выстроен по фактам из логов, а не по догадкам:
+     *
+     * 1. Карточка по `oid` — она же карточка остановки. Логи показали, что MapKit отдаёт
+     *    остановки как организации (`ymapsbm1://org/…`), и именно карточка организации
+     *    содержит вкладки «Обзор / Расписание / Фото / Отзывы». Раньше для транспорта
+     *    этот шаг пропускался, поэтому оставался только поиск — что и раздражало.
+     * 2. Ссылка по stopId, если он вдруг есть.
+     * 3. Поиск по названию — крайний случай.
+     *
+     * Схему `ymapsbm1://` из цепочки убрали: в логе видно, что её никто не открывает
+     * (`START_INTENT_NOT_RESOLVED`, код −91), то есть это была бесполезная попытка.
      */
     fun openPlaceCard(context: Context, place: PlacePoint) {
-        val isTransport = place.category == NeedCategory.TRANSPORT
         val stopId = stopIdOf(place)
+        // oid берём из поля, а если его нет — вытаскиваем из URI объекта.
+        val oid = place.yandexOid?.takeIf { it.isNotBlank() }
+            ?: place.yandexUri?.let { OID_REGEX.find(it)?.groupValues?.get(1) }
 
         val candidates = buildList {
-            // Лучший вариант — прямая ссылка на расписание, но она требует stopId.
             stopId?.let { add(stopScheduleUrl(place, it)) }
-            place.yandexUri?.takeIf { it.isNotBlank() }?.let { add(it) }
-            if (!isTransport) {
-                place.yandexOid?.takeIf { it.isNotBlank() }?.let { add("yandexmaps://maps.yandex.ru/?oid=$it") }
-            }
-            if (isTransport) {
-                // Попытка попросить приложение открыть найденное как остановку.
-                // Параметр mode в официальной документации URL-схемы не описан — берём его
-                // из ссылок веб-версии Карт. Если приложение его проигнорирует, просто
-                // откроется карточка на обзоре, то есть не хуже прежнего.
-                add(
-                    "yandexmaps://maps.yandex.ru/?ll=${place.longitude},${place.latitude}" +
-                        "&z=18&mode=stop&text=${Uri.encode(place.name)}"
-                )
+            oid?.let {
+                // tab=schedule — догадка: в документации URL-схемы такого параметра нет.
+                // Неизвестные параметры приложение обычно игнорирует, поэтому худшее,
+                // что будет — карточка откроется на «Обзоре», как сейчас.
+                add("yandexmaps://maps.yandex.ru/?oid=$it&tab=schedule")
+                add("yandexmaps://maps.yandex.ru/?oid=$it")
             }
             add(
                 "yandexmaps://maps.yandex.ru/?ll=${place.longitude},${place.latitude}" +
@@ -158,6 +162,9 @@ object YandexMapsLauncher {
             add(searchWebUrl(place))
         }
 
+        Log.d(LOG_TAG, "openPlaceCard name=${place.name} rubric=${place.categoryDescription} " +
+            "uri=${place.yandexUri} oid=$oid stopId=$stopId")
+
         openFirstAvailable(context, candidates)
     }
 
@@ -165,9 +172,10 @@ object YandexMapsLauncher {
         for (uri in uris) {
             try {
                 context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(uri)))
+                Log.d(LOG_TAG, "opened: $uri")
                 return
             } catch (e: ActivityNotFoundException) {
-                // пробуем следующий вариант
+                Log.d(LOG_TAG, "no app for: $uri")
             }
         }
         Toast.makeText(context, "Не нашлось приложения, чтобы открыть ссылку", Toast.LENGTH_LONG).show()
