@@ -104,7 +104,8 @@ fun ScheduleSheet(
                     Text(
                         "Яндекс Расписания знают междугородний транспорт — электрички, поезда, " +
                             "автобусы дальнего следования, паромы и самолёты. Городские автобусы " +
-                            "и трамваи туда не входят: их маршруты и прибытие смотрите в Яндекс Картах.",
+                            "и трамваи туда не входят. Кнопка ниже откроет карту вплотную к остановке: " +
+                            "нажмите на её значок — там будет прибытие транспорта.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -113,7 +114,7 @@ fun ScheduleSheet(
                         onClick = { YandexMapsLauncher.openPlaceCard(context, place) },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("Открыть в Яндекс Картах")
+                        Text("Показать остановку на карте Яндекса")
                     }
                 }
 
@@ -130,7 +131,7 @@ fun ScheduleSheet(
                         onClick = { YandexMapsLauncher.openPlaceCard(context, place) },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("Открыть в Яндекс Картах")
+                        Text("Показать остановку на карте Яндекса")
                     }
                 }
             }

@@ -137,17 +137,23 @@ object YandexMapsLauncher {
         val candidates = buildList {
             // Карточка остановки: у неё есть вкладка «Расписание» с прибытием транспорта.
             stopId?.let { add(stopScheduleUrl(place, it)) }
-            // Карточка организации. Для остановок НЕ используем: скриншоты показали,
-            // что одноимённая организация («Остановка общественного транспорта») —
-            // это другой объект, у которого вкладки «Расписание» нет вообще.
-            if (!isTransport) {
+
+            if (isTransport) {
+                // Идентификатора остановки у нас нет (см. комментарий к stopIdOf), а два других
+                // варианта плохи: карточка организации по oid расписания не содержит вовсе,
+                // поиск по названию открывает список результатов. Поэтому открываем карту
+                // вплотную к остановке: её значок оказывается в центре экрана, и по нему
+                // одно касание до настоящей карточки остановки с расписанием.
+                add("yandexmaps://maps.yandex.ru/?ll=${place.longitude},${place.latitude}&z=19")
+                add("https://yandex.ru/maps/?ll=${place.longitude},${place.latitude}&z=19")
+            } else {
                 oid?.let { add("yandexmaps://maps.yandex.ru/?oid=$it") }
+                add(
+                    "yandexmaps://maps.yandex.ru/?ll=${place.longitude},${place.latitude}" +
+                        "&z=17&text=${Uri.encode(place.name)}"
+                )
+                add(searchWebUrl(place))
             }
-            add(
-                "yandexmaps://maps.yandex.ru/?ll=${place.longitude},${place.latitude}" +
-                    "&z=17&text=${Uri.encode(place.name)}"
-            )
-            add(searchWebUrl(place))
         }
 
         Log.d(LOG_TAG, "openPlaceCard name=${place.name} rubric=${place.categoryDescription} " +
