@@ -16,6 +16,25 @@ val localProperties = Properties().apply {
 val mapkitApiKey: String = localProperties.getProperty("MAPKIT_API_KEY") ?: ""
 val raspApiKey: String = localProperties.getProperty("RASP_API_KEY") ?: ""
 
+// Параметры РЕЛИЗНОГО ключа подписи. Берутся из local.properties (локально) либо из
+// переменных окружения (сборка в CI). В репозиторий релизный ключ не кладётся никогда:
+// потеря или утечка этого ключа означает, что обновлять приложение в RuStore
+// под тем же package больше не получится.
+fun secret(name: String): String? =
+    localProperties.getProperty(name) ?: System.getenv(name)
+
+val releaseStoreFile = secret("RELEASE_STORE_FILE")
+val releaseStorePassword = secret("RELEASE_STORE_PASSWORD")
+val releaseKeyAlias = secret("RELEASE_KEY_ALIAS")
+val releaseKeyPassword = secret("RELEASE_KEY_PASSWORD")
+val hasReleaseSigning = releaseStoreFile != null && releaseStorePassword != null &&
+    releaseKeyAlias != null && releaseKeyPassword != null
+
+// Номер версии можно задать снаружи, чтобы CI выпускал новую сборку без правки файла.
+// RuStore не принимает повторно versionCode, который уже публиковался.
+val appVersionCode = (secret("VERSION_CODE") ?: "1").toInt()
+val appVersionName = secret("VERSION_NAME") ?: "1.0.0"
+
 android {
     namespace = "com.lifenavigator.app"
     compileSdk = 35
@@ -24,8 +43,8 @@ android {
         applicationId = "com.lifenavigator.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0-mvp"
+        versionCode = appVersionCode
+        versionName = appVersionName
 
         buildConfigField("String", "MAPKIT_API_KEY", "\"$mapkitApiKey\"")
         buildConfigField("String", "RASP_API_KEY", "\"$raspApiKey\"")
@@ -37,6 +56,15 @@ android {
     // Android отказывается ставить новую версию поверх старой ("signatures do not match")
     // и приложение приходится удалять. С общим ключом обновления просто накатываются.
     signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(releaseStoreFile!!)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+
         getByName("debug") {
             storeFile = rootProject.file("keystore/lifenavigator-debug.keystore")
             storePassword = "lifenavigator"
@@ -47,8 +75,15 @@ android {
 
     buildTypes {
         release {
+            // Сжатие кода пока выключено намеренно: MapKit активно использует нативный код
+            // и рефлексию, и включать R8 без проверки на живом устройстве рискованно —
+            // приложение соберётся, но может падать уже у пользователей.
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+
+            // Если ключ не задан, release просто не подписывается — тогда собирать
+            // релиз бессмысленно, RuStore неподписанный файл не примет.
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 
@@ -72,10 +107,12 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
     implementation("androidx.activity:activity-compose:1.9.1")
 
-    // Yandex MapKit SDK (нативные карты) + Google Play Services Location для геолокации
-    // Full-версия: даёт карту + поиск по организациям, геокодирование, маршрутизацию (нужно для реальных точек).
+    // Yandex MapKit SDK, full-версия: карта, поиск по организациям, геокодирование.
     implementation("com.yandex.android:maps.mobile:4.42.0-full")
-    implementation("com.google.android.gms:play-services-location:21.3.0")
+    // Google Play Services сознательно НЕ подключены. Это важно именно для RuStore:
+    // приложение ставят в том числе на устройства без сервисов Google, где
+    // FusedLocationProviderClient просто не работает. Геолокацию даёт сам MapKit
+    // (MapKitFactory.getInstance().createLocationManager()) — см. MapScreen.
     implementation("androidx.compose.runtime:runtime-livedata:1.6.8")
 
     implementation(platform("androidx.compose:compose-bom:2024.06.00"))

@@ -1,0 +1,80 @@
+name: Release for RuStore
+
+# Собирает ПОДПИСАННЫЕ релизные артефакты для загрузки в RuStore.
+# Запускается вручную: указываете номер версии — получаете AAB и APK.
+#
+# Перед первым запуском добавьте в секреты репозитория
+# (Settings → Secrets and variables → Actions):
+#   MAPKIT_API_KEY           — ключ Яндекс MapKit
+#   RASP_API_KEY             — ключ API Яндекс Расписаний
+#   RELEASE_KEYSTORE_BASE64  — релизный keystore, закодированный в base64
+#   RELEASE_STORE_PASSWORD   — пароль хранилища
+#   RELEASE_KEY_ALIAS        — алиас ключа
+#   RELEASE_KEY_PASSWORD     — пароль ключа
+#
+# Keystore в base64 получается так:
+#   Windows PowerShell:
+#     [Convert]::ToBase64String([IO.File]::ReadAllBytes("release.keystore")) > keystore.txt
+#   Linux/macOS:
+#     base64 -w0 release.keystore > keystore.txt
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_code:
+        description: 'versionCode (целое число, должно расти с каждой публикацией)'
+        required: true
+        default: '1'
+      version_name:
+        description: 'versionName (например 1.0.0)'
+        required: true
+        default: '1.0.0'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Create local.properties with API keys
+        run: |
+          echo "MAPKIT_API_KEY=${{ secrets.MAPKIT_API_KEY }}" > local.properties
+          echo "RASP_API_KEY=${{ secrets.RASP_API_KEY }}" >> local.properties
+
+      - name: Restore release keystore
+        run: echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 -d > release.keystore
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Build signed AAB and APK
+        env:
+          RELEASE_STORE_FILE: ${{ github.workspace }}/release.keystore
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+          VERSION_CODE: ${{ inputs.version_code }}
+          VERSION_NAME: ${{ inputs.version_name }}
+        run: gradle bundleRelease assembleRelease
+
+      - name: Remove keystore from runner
+        if: always()
+        run: rm -f release.keystore
+
+      - name: Upload artifacts for RuStore
+        uses: actions/upload-artifact@v4
+        with:
+          name: rustore-release-${{ inputs.version_name }}
+          path: |
+            app/build/outputs/bundle/release/app-release.aab
+            app/build/outputs/apk/release/app-release.apk

@@ -44,9 +44,6 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.google.android.gms.location.LocationServices
-import com.google.android.gms.location.Priority
-import com.google.android.gms.tasks.CancellationTokenSource
 import com.lifenavigator.app.R
 import com.lifenavigator.app.data.model.NeedCategory
 import com.lifenavigator.app.data.model.MarkerStyle
@@ -58,6 +55,9 @@ import com.lifenavigator.app.ui.screens.menu.SignInDialog
 import com.yandex.mapkit.Animation
 import com.yandex.mapkit.MapKitFactory
 import com.yandex.mapkit.geometry.Point
+import com.yandex.mapkit.location.Location
+import com.yandex.mapkit.location.LocationListener
+import com.yandex.mapkit.location.LocationStatus
 import com.yandex.mapkit.map.CameraListener
 import com.yandex.mapkit.map.CameraPosition
 import com.yandex.mapkit.map.MapObjectCollection
@@ -102,7 +102,11 @@ private const val LABELS_MIN_ZOOM = 18f
 fun MapScreen(viewModel: MapViewModel = viewModel()) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
-    val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
+    // Геолокацию берём у MapKit, а не у Google Play Services: приложение должно работать
+    // на устройствах без сервисов Google — это обычная ситуация для аудитории RuStore.
+    val locationManager = remember { MapKitFactory.getInstance().createLocationManager() }
+    // MapKit держит слушателей по слабой ссылке — храним свою, иначе ответ не придёт.
+    var locationListener by remember { mutableStateOf<LocationListener?>(null) }
 
     var hasLocationPermission by remember {
         mutableStateOf(
@@ -121,21 +125,29 @@ fun MapScreen(viewModel: MapViewModel = viewModel()) {
 
     val centerOnUser: () -> Unit = {
         userLocationLayer?.isVisible = true
-        val cancellationTokenSource = CancellationTokenSource()
-        fusedLocationClient.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, cancellationTokenSource.token)
-            .addOnSuccessListener { location ->
-                if (location != null) {
-                    val userPoint = Point(location.latitude, location.longitude)
-                    mapViewRef?.map?.move(
-                        CameraPosition(userPoint, 16f, 0f, 0f),
-                        Animation(Animation.Type.SMOOTH, 0.5f),
-                        null
-                    )
-                    viewModel.loadRealPlacesNear(userPoint)
-                } else {
-                    Toast.makeText(context, "Не удалось определить местоположение — проверьте, включена ли геолокация в системе", Toast.LENGTH_LONG).show()
+        val listener = object : LocationListener {
+            override fun onLocationUpdated(location: Location) {
+                val userPoint = location.position
+                mapViewRef?.map?.move(
+                    CameraPosition(userPoint, 16f, 0f, 0f),
+                    Animation(Animation.Type.SMOOTH, 0.5f),
+                    null
+                )
+                viewModel.loadRealPlacesNear(userPoint)
+            }
+
+            override fun onLocationStatusUpdated(status: LocationStatus) {
+                if (status == LocationStatus.NOT_AVAILABLE) {
+                    Toast.makeText(
+                        context,
+                        "Не удалось определить местоположение — проверьте, включена ли геолокация в системе",
+                        Toast.LENGTH_LONG
+                    ).show()
                 }
             }
+        }
+        locationListener = listener
+        locationManager.requestSingleUpdate(listener)
     }
 
     var hasAutoLoaded by remember { mutableStateOf(false) }

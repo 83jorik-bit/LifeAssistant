@@ -4,3 +4,13 @@ MAPKIT_API_KEY=your-yandex-mapkit-key-here
 
 # Ключ API Яндекс Расписаний (расписание транспорта на остановках и станциях)
 RASP_API_KEY=your-yandex-rasp-key-here
+
+# --- Релизная подпись (нужна только для сборки релиза под RuStore) ---
+# Создать ключ: keytool -genkeypair -v -keystore release.keystore \
+#   -alias lifenavigator -keyalg RSA -keysize 2048 -validity 10950
+# ВНИМАНИЕ: этот ключ нельзя терять. Без него обновить приложение в RuStore
+# под тем же package name будет невозможно — только публиковать заново как новое.
+RELEASE_STORE_FILE=/полный/путь/release.keystore
+RELEASE_STORE_PASSWORD=пароль-хранилища
+RELEASE_KEY_ALIAS=lifenavigator
+RELEASE_KEY_PASSWORD=пароль-ключа
