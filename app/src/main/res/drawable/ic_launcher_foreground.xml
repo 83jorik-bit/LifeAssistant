@@ -1,0 +1,25 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!--
+        Адаптивная иконка: значимое изображение держим внутри центральных 72dp,
+        иначе система обрежет его на круглых и скруглённых масках.
+        Метка на карте — то, чем приложение занимается.
+    -->
+    <group android:translateX="18" android:translateY="18">
+        <!-- Тень-подложка под меткой -->
+        <path
+            android:fillColor="#1A000000"
+            android:pathData="M36,62m-13,0a13,4.5 0 1,0 26,0a13,4.5 0 1,0 -26,0" />
+        <!-- Метка -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M36,8C25.5,8 17,16.5 17,27c0,13.9 19,33 19,33s19,-19.1 19,-33C55,16.5 46.5,8 36,8z" />
+        <!-- Внутренний круг цвета приложения -->
+        <path
+            android:fillColor="#2E7D6B"
+            android:pathData="M36,27m-7.5,0a7.5,7.5 0 1,0 15,0a7.5,7.5 0 1,0 -15,0" />
+    </group>
+</vector>
