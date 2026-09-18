@@ -146,8 +146,10 @@ fun MapScreen(viewModel: MapViewModel = viewModel()) {
                 }
             }
         }
+        // Сильную ссылку держим в locationListener: SDK принимает слушателя слабой
+        // ссылкой и сам его не удерживает — без этого ответ может не прийти.
         locationListener = listener
-        locationManager.requestSingleUpdate(listener)
+        locationManager.requestSingleUpdate(WeakReference(listener))
     }
 
     var hasAutoLoaded by remember { mutableStateOf(false) }
