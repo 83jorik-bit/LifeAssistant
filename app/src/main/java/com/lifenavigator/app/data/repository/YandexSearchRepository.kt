@@ -98,10 +98,14 @@ object YandexSearchRepository {
      */
     private fun searchTypesFor(category: NeedCategory): Int =
         if (category == NeedCategory.TRANSPORT) {
-            // TRANSIT — ключевой тип: именно он возвращает сам объект остановки
-            // (с идентификатором stop__…), а не одноимённую организацию.
-            // Без него Яндекс отдавал карточку организации, где расписания нет вовсе.
-            SearchType.TRANSIT.value or SearchType.GEO.value or SearchType.BIZ.value
+            // Только GEO и BIZ: в Android-версии SearchType других значений НЕТ
+            // (официальный справочник перечисляет NONE, GEO, BIZ — и всё).
+            // Тип TRANSIT существует в биндингах для других платформ, но там же
+            // указано, что реализованы только none/geo/biz. Поэтому получить через
+            // поиск сам объект остановки с идентификатором stop__… невозможно:
+            // остановка приходит либо топонимом с непрозрачным URI, либо одноимённой
+            // организацией, у карточки которой вкладки «Расписание» нет.
+            SearchType.GEO.value or SearchType.BIZ.value
         } else {
             SearchType.BIZ.value
         }
