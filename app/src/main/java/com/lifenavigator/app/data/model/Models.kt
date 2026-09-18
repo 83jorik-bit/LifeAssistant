@@ -57,6 +57,20 @@ data class PlacePoint(
 /**
  * Статья бюджета пользователя.
  */
+/**
+ * Одна трата, введённая пользователем.
+ *
+ * Дата хранится числом дней от начала эпохи: так её просто сохранять и сравнивать,
+ * не таща в хранилище форматы и часовые пояса.
+ */
+data class Expense(
+    val id: String,
+    val category: NeedCategory,
+    val amountRub: Int,
+    val note: String?,
+    val dateEpochDay: Long
+)
+
 data class BudgetCategory(
     val category: NeedCategory,
     val monthlyLimitRub: Int,
