@@ -12,19 +12,6 @@ import kotlinx.coroutines.delay
  */
 object MockRepository {
 
-    suspend fun getBudgetCategories(): List<BudgetCategory> {
-        delay(150)
-        return listOf(
-            BudgetCategory(NeedCategory.GROCERY, monthlyLimitRub = 25000, spentRub = 18400),
-            BudgetCategory(NeedCategory.PHARMACY, monthlyLimitRub = 4000, spentRub = 4650),
-            BudgetCategory(NeedCategory.CLINIC, monthlyLimitRub = 6000, spentRub = 2500),
-            BudgetCategory(NeedCategory.BEAUTY, monthlyLimitRub = 5000, spentRub = 2200),
-            BudgetCategory(NeedCategory.CAFE, monthlyLimitRub = 8000, spentRub = 7100),
-            BudgetCategory(NeedCategory.TRANSPORT, monthlyLimitRub = 3500, spentRub = 3500),
-            BudgetCategory(NeedCategory.EDUCATION, monthlyLimitRub = 4000, spentRub = 1500)
-        )
-    }
-
     suspend fun getSubscriptions(): List<Subscription> {
         delay(150)
         return listOf(
