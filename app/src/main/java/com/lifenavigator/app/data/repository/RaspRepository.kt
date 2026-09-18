@@ -70,6 +70,10 @@ object RaspRepository {
     /** Сколько ближайших рейсов показываем в карточке. */
     private const val MAX_DEPARTURES = 12
 
+    /** Размер страницы расписания и предел числа страниц — чтобы не вычитывать сутки целиком. */
+    private const val PAGE_SIZE = 100
+    private const val MAX_PAGES = 6
+
     suspend fun loadSchedule(
         latitude: Double,
         longitude: Double,
@@ -185,41 +189,67 @@ object RaspRepository {
         return null
     }
 
+    /**
+     * Загружает отправления со станции за указанный день.
+     *
+     * ВАЖНО про постраничность: API отдаёт расписание страницами (по умолчанию 100 рейсов),
+     * отсортированными с начала суток. У крупной станции за день бывает 200-300 рейсов,
+     * поэтому к вечеру вся первая страница — это уже ушедшие утренние поезда. Раньше мы
+     * читали только её, получали пустой список и показывали расписание на завтра.
+     * Теперь идём по страницам, пока не наберём ближайшие рейсы.
+     */
     private fun loadDepartures(
         stationCode: String,
         date: LocalDate,
         onlyFuture: Boolean
     ): List<Departure> {
-        val path = "/schedule/?" +
-            "apikey=${BuildConfig.RASP_API_KEY}" +
-            "&format=json&lang=ru_RU" +
-            "&station=${URLEncoder.encode(stationCode, "UTF-8")}" +
-            "&date=${date.format(DateTimeFormatter.ISO_LOCAL_DATE)}&event=departure"
-
-        val schedule = JSONObject(httpGet(path)).optJSONArray("schedule") ?: return emptyList()
         val now = OffsetDateTime.now()
         val result = mutableListOf<Departure>()
 
-        for (i in 0 until schedule.length()) {
-            val item = schedule.optJSONObject(i) ?: continue
-            val departureRaw = item.optString("departure").takeIf { it.isNotBlank() } ?: continue
-            val departureTime = runCatching { OffsetDateTime.parse(departureRaw) }.getOrNull() ?: continue
-            // Уже ушедшие рейсы не показываем (для завтрашнего дня фильтр не нужен).
-            if (onlyFuture && departureTime.isBefore(now)) continue
+        var offset = 0
+        var total = Int.MAX_VALUE
+        var pagesRead = 0
 
-            val thread = item.optJSONObject("thread")
-            result += Departure(
-                time = departureTime.format(DateTimeFormatter.ofPattern("HH:mm")),
-                title = thread?.optString("short_title")?.takeIf { it.isNotBlank() }
-                    ?: thread?.optString("title").orEmpty(),
-                transportType = thread?.optJSONObject("transport_subtype")?.optString("title")
-                    ?.takeIf { it.isNotBlank() }
-                    ?: thread?.optString("transport_type").orEmpty(),
-                number = thread?.optString("number")?.takeIf { it.isNotBlank() },
-                days = item.optString("days").takeIf { it.isNotBlank() },
-                platform = item.optString("platform").takeIf { it.isNotBlank() }
-            )
-            if (result.size >= MAX_DEPARTURES) break
+        while (result.size < MAX_DEPARTURES && offset < total && pagesRead < MAX_PAGES) {
+            val path = "/schedule/?" +
+                "apikey=${BuildConfig.RASP_API_KEY}" +
+                "&format=json&lang=ru_RU" +
+                "&station=${URLEncoder.encode(stationCode, "UTF-8")}" +
+                "&date=${date.format(DateTimeFormatter.ISO_LOCAL_DATE)}&event=departure" +
+                "&offset=$offset&limit=$PAGE_SIZE"
+
+            val response = JSONObject(httpGet(path))
+            val schedule = response.optJSONArray("schedule") ?: break
+            if (schedule.length() == 0) break
+
+            // Сколько всего рейсов за день — из этого понимаем, есть ли ещё страницы.
+            // Если сервер не прислал pagination, ограничиваемся одной страницей.
+            total = response.optJSONObject("pagination")?.optInt("total", 0) ?: 0
+
+            for (i in 0 until schedule.length()) {
+                val item = schedule.optJSONObject(i) ?: continue
+                val departureRaw = item.optString("departure").takeIf { it.isNotBlank() } ?: continue
+                val departureTime = runCatching { OffsetDateTime.parse(departureRaw) }.getOrNull() ?: continue
+                // Уже ушедшие рейсы не показываем (для завтрашнего дня фильтр не нужен).
+                if (onlyFuture && departureTime.isBefore(now)) continue
+
+                val thread = item.optJSONObject("thread")
+                result += Departure(
+                    time = departureTime.format(DateTimeFormatter.ofPattern("HH:mm")),
+                    title = thread?.optString("short_title")?.takeIf { it.isNotBlank() }
+                        ?: thread?.optString("title").orEmpty(),
+                    transportType = thread?.optJSONObject("transport_subtype")?.optString("title")
+                        ?.takeIf { it.isNotBlank() }
+                        ?: thread?.optString("transport_type").orEmpty(),
+                    number = thread?.optString("number")?.takeIf { it.isNotBlank() },
+                    days = item.optString("days").takeIf { it.isNotBlank() },
+                    platform = item.optString("platform").takeIf { it.isNotBlank() }
+                )
+                if (result.size >= MAX_DEPARTURES) break
+            }
+
+            offset += schedule.length()
+            pagesRead++
         }
 
         return result

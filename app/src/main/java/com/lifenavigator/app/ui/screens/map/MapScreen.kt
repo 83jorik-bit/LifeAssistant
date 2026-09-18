@@ -47,11 +47,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
+import com.lifenavigator.app.R
 import com.lifenavigator.app.data.model.NeedCategory
 import com.lifenavigator.app.data.model.MarkerStyle
 import com.lifenavigator.app.data.model.PlacePoint
 import com.lifenavigator.app.data.model.allMarkerStyles
-import com.lifenavigator.app.data.model.hasIntercitySchedule
 import com.lifenavigator.app.data.model.markerStyleFor
 import com.lifenavigator.app.ui.screens.menu.SettingsSheet
 import com.lifenavigator.app.ui.screens.menu.SignInDialog
@@ -526,7 +526,11 @@ private fun PlaceDetailsSheet(
             // запросить заканчивалась бесполезным «рейсов больше нет».
             // Вокзалы, ж/д станции и причалы — наоборот, есть в Расписаниях, там показываем
             // реальные времена прямо в приложении.
-            val useRaspSchedule = place.hasIntercitySchedule()
+            // Расписание пробуем показать в приложении для ЛЮБОЙ транспортной точки.
+            // Для вокзалов и станций данные есть в Яндекс Расписаниях; для городской
+            // остановки их, скорее всего, не будет — тогда шторка честно это скажет
+            // и предложит открыть карточку остановки в Яндекс Картах.
+            val useRaspSchedule = isTransport
 
             OutlinedButton(
                 onClick = {
@@ -558,13 +562,9 @@ private fun PlaceDetailsSheet(
             Spacer(Modifier.height(8.dp))
             Text(
                 if (isTransport) {
-                    if (useRaspSchedule) {
-                        "Для вокзалов, станций и причалов расписание показывается прямо здесь, " +
-                            "по данным Яндекс Расписаний."
-                    } else {
-                        "Маршруты и прибытие городского транспорта смотрите в Яндекс Картах: " +
-                            "в Расписаниях данных о городских остановках нет."
-                    }
+                    "Расписание открывается в приложении. Для вокзалов и станций данные берутся " +
+                        "из Яндекс Расписаний; для городских остановок их там может не быть — " +
+                        "тогда прибытие транспорта смотрите в Яндекс Картах по второй кнопке."
                 } else {
                     "Тексты отзывов и фотографии MapKit SDK не передаёт — их можно посмотреть " +
                         "в приложении Яндекс Карты по кнопке выше."
@@ -719,6 +719,21 @@ private fun markerBitmap(context: Context, markerStyle: MarkerStyle): Bitmap {
         strokeWidth = borderWidth
     }
     canvas.drawCircle(center, center, center - borderWidth, borderPaint)
+
+    // У банкоматов вместо эмодзи — своя картинка: как выглядит эмодзи 🏧, решает
+    // шрифт устройства, и на разных телефонах это разные значки. Встроенный
+    // вектор рисуется одинаково везде.
+    val iconRes = if (markerStyle.key == NeedCategory.ATM.name) R.drawable.ic_atm_marker else null
+
+    if (iconRes != null) {
+        val drawable = ContextCompat.getDrawable(context, iconRes)
+        if (drawable != null) {
+            val inset = (sizePx * 0.24f).toInt()
+            drawable.setBounds(inset, inset, sizePx - inset, sizePx - inset)
+            drawable.draw(canvas)
+            return bitmap
+        }
+    }
 
     val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textSize = sizePx * 0.5f
