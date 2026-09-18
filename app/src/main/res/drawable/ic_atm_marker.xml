@@ -1,0 +1,28 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Корпус банкомата -->
+    <path
+        android:fillColor="#B0BEC5"
+        android:pathData="M4,2h16a1,1 0 0 1 1,1v18a1,1 0 0 1 -1,1h-16a1,1 0 0 1 -1,-1v-18a1,1 0 0 1 1,-1z" />
+    <!-- Экран -->
+    <path
+        android:fillColor="#1E88E5"
+        android:pathData="M5.5,4h13v8h-13z" />
+    <!-- Клавиатура -->
+    <path
+        android:fillColor="#78909C"
+        android:pathData="M5.5,14h2v1.6h-2zM8.5,14h2v1.6h-2zM11.5,14h2v1.6h-2zM5.5,16.6h2v1.6h-2zM8.5,16.6h2v1.6h-2zM11.5,16.6h2v1.6h-2z" />
+    <!-- Индикаторы и слот выдачи -->
+    <path
+        android:fillColor="#E53935"
+        android:pathData="M15,14h1.2v1.6h-1.2z" />
+    <path
+        android:fillColor="#43A047"
+        android:pathData="M17,14h1.2v1.6h-1.2z" />
+    <path
+        android:fillColor="#546E7A"
+        android:pathData="M15,16.6h3.5v1.6h-3.5z" />
+</vector>
