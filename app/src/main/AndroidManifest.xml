@@ -39,10 +39,22 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:theme="@style/Theme.LifeNavigator">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!--
+                Возврат из браузера после входа через Яндекс ID или VK ID.
+                Такой же адрес нужно указать в кабинете провайдера.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="lifenavigator" android:host="auth" />
             </intent-filter>
         </activity>
     </application>
