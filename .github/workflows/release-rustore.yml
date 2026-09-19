@@ -101,6 +101,18 @@ jobs:
           VERSION_NAME: ${{ inputs.version_name }}
         run: gradle bundleRelease assembleRelease
 
+      # Показываем, чем подписана сборка. Отпечаток должен совпадать с тем,
+      # что вы видели при создании ключа, и он же нужен в настройках VK ID.
+      - name: Show signing certificate
+        run: |
+          APK=app/build/outputs/apk/release/app-release.apk
+          if unzip -l "$APK" | grep -qiE "META-INF/.*\.(RSA|DSA|EC)$"; then
+            echo "Сборка подписана. Отпечаток сертификата:"
+            "$JAVA_HOME/bin/keytool" -printcert -jarfile "$APK" | grep -iE "SHA256|Owner" || true
+          else
+            echo "ВНИМАНИЕ: сборка не подписана — проверьте секреты RELEASE_*."
+          fi
+
       - name: Remove keystore from runner
         if: always()
         run: rm -f release.keystore

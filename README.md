@@ -267,15 +267,36 @@ RuStore сказано, что параметр `companyId` для автори�
 
 ### Что нужно сделать вам
 
-1. **Создать релизный ключ** и сохранить его надёжно:
-   ```bash
-   keytool -genkeypair -v -keystore release.keystore \
-     -alias lifenavigator -keyalg RSA -keysize 2048 -validity 10950
+1. **Создать релизный ключ.** Есть готовый скрипт, он делает всё сразу — создаёт ключ,
+   готовит base64 и показывает, что в какой секрет положить:
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File scripts\create-release-keystore.ps1
    ```
-   Этот ключ нельзя терять и нельзя менять: при потере обновить приложение под тем же
+   Для Linux/macOS: `bash scripts/create-release-keystore.sh`.
+   Нужен установленный JDK (есть внутри Android Studio: папка `jbr\bin`).
+
+   Скрипт спросит два пароля — хранилища и ключа — и выдаст четыре значения:
+
+   | Секрет | Что положить |
+   |---|---|
+   | `RELEASE_KEYSTORE_BASE64` | содержимое файла `release.keystore.base64.txt` |
+   | `RELEASE_STORE_PASSWORD` | пароль хранилища, который вы ввели |
+   | `RELEASE_KEY_ALIAS` | `lifenavigator` |
+   | `RELEASE_KEY_PASSWORD` | пароль ключа, который вы ввели |
+
+   Ключ генерируется **на вашем компьютере и остаётся только у вас** — это не
+   формальность: у кого есть файл и пароли, тот может выпустить обновление вашего
+   приложения от вашего имени. Файлы `release.keystore` и `release.keystore.base64.txt`
+   добавлены в `.gitignore`, после создания секретов base64-файл лучше удалить.
+
+   Ключ нельзя терять и нельзя менять: при потере обновить приложение под тем же
    package name не получится — придётся публиковать заново, потеряв установки и отзывы.
    Debug-ключ из папки `keystore/` для публикации не годится: он лежит в репозитории
    открыто, то есть подписать им может кто угодно.
+
+   После сборки в логе workflow появляется шаг «Show signing certificate» с отпечатком
+   сертификата — он должен совпасть с тем, что показал скрипт, и он же понадобится
+   в настройках VK ID.
 2. **Добавить секреты репозитория** (Settings → Secrets and variables → Actions):
    `RELEASE_KEYSTORE_BASE64`, `RELEASE_STORE_PASSWORD`, `RELEASE_KEY_ALIAS`,
    `RELEASE_KEY_PASSWORD` (плюс уже добавленные `MAPKIT_API_KEY` и `RASP_API_KEY`).
