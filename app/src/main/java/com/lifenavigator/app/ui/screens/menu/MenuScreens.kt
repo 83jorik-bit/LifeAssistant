@@ -84,13 +84,15 @@ fun SignInDialog(onDismiss: () -> Unit) {
         ) {
             Text("Вход", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
 
-            profile?.let {
+            if (profile != null) {
+                // Вход выполнен — незачем снова показывать шаги согласия и кнопки
+                // провайдеров, только профиль и выход.
                 Spacer(Modifier.height(12.dp))
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(12.dp)) {
                         Text("Вы вошли как", style = MaterialTheme.typography.bodySmall)
-                        Text(it.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                        it.email?.let { mail ->
+                        Text(profile!!.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        profile!!.email?.let { mail ->
                             Text(mail, style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
@@ -100,6 +102,7 @@ fun SignInDialog(onDismiss: () -> Unit) {
                         }
                     }
                 }
+                return@Column
             }
 
             Spacer(Modifier.height(16.dp))
@@ -140,7 +143,8 @@ fun SignInDialog(onDismiss: () -> Unit) {
             Spacer(Modifier.height(8.dp))
 
             OAuthProvider.entries.forEach { provider ->
-                Button(
+                BrandedSignInButton(
+                    provider = provider,
                     onClick = {
                         if (!consentGiven) {
                             pendingProvider = provider
@@ -153,9 +157,7 @@ fun SignInDialog(onDismiss: () -> Unit) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 8.dp)
-                ) {
-                    Text("Войти через ${provider.title}")
-                }
+                )
                 if (!provider.isConfigured) {
                     Text(
                         "Не настроено: добавьте ${if (provider == OAuthProvider.YANDEX) "YANDEX_CLIENT_ID" else "VK_CLIENT_ID"} " +
@@ -189,6 +191,9 @@ fun SignInDialog(onDismiss: () -> Unit) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+
+            Spacer(Modifier.height(20.dp))
+            GosuslugiInfoCard()
         }
     }
 
@@ -204,6 +209,38 @@ fun SignInDialog(onDismiss: () -> Unit) {
                 pendingProvider = null
             }
         )
+    }
+}
+
+/**
+ * Вход через Госуслуги (ЕСИА) не реализован и не появится в виде обычной кнопки —
+ * условия делают это несоразмерным задаче. Честное объяснение вместо неработающей кнопки.
+ *
+ * Требования на 2026 год: учётная запись ЮРИДИЧЕСКОГО лица на Госуслугах, квалифицированная
+ * электронная подпись юрлица, регистрация информационной системы в технологическом портале
+ * ЕСИА и её аттестация по требованиям информационной безопасности. С 31.12.2026 добавляется
+ * обязательная поддержка OpenID Connect с подтверждением соответствия требованиям ФСБ.
+ * Проверено на дату этого комментария; условия ЕСИА могут измениться — стоит сверяться
+ * с технологическим порталом ЕСИА перед принятием решения.
+ */
+@Composable
+private fun GosuslugiInfoCard() {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp)) {
+            Text("Вход через Госуслуги", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Не реализован — и вряд ли появится в ближайшее время. Подключение к ЕСИА " +
+                    "требует юридического лица (физлицу недоступно в принципе), квалифицированной " +
+                    "электронной подписи организации, регистрации информационной системы в " +
+                    "технологическом портале ЕСИА и её аттестации по требованиям информационной " +
+                    "безопасности. С 31.12.2026 добавляется ещё и обязательное подтверждение " +
+                    "соответствия требованиям ФСБ. Для приложения такого масштаба это несоразмерно " +
+                    "затратам — Яндекс ID и VK ID закрывают ту же задачу без этого пути.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 
