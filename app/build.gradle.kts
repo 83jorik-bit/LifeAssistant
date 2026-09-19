@@ -18,10 +18,9 @@ val raspApiKey: String = localProperties.getProperty("RASP_API_KEY") ?: ""
 // client_id провайдеров входа. Пусто — кнопка входа показывается неактивной.
 val yandexClientId: String = localProperties.getProperty("YANDEX_CLIENT_ID") ?: ""
 val vkClientId: String = localProperties.getProperty("VK_CLIENT_ID") ?: ""
-// Адрес возврата можно переопределить: у провайдеров разные требования к его виду,
-// и подгонять его правкой кода неудобно.
+// Адрес возврата у Яндекса можно переопределить, если кабинет потребует другой вид.
+// У VK ID для Android такого адреса вообще не задаётся — он фиксирован, см. ниже.
 val yandexRedirect: String = localProperties.getProperty("YANDEX_REDIRECT_URI") ?: ""
-val vkRedirect: String = localProperties.getProperty("VK_REDIRECT_URI") ?: ""
 
 // Параметры РЕЛИЗНОГО ключа подписи. Берутся из local.properties (локально) либо из
 // переменных окружения (сборка в CI). В репозиторий релизный ключ не кладётся никогда:
@@ -58,7 +57,14 @@ android {
         buildConfigField("String", "YANDEX_CLIENT_ID", "\"$yandexClientId\"")
         buildConfigField("String", "VK_CLIENT_ID", "\"$vkClientId\"")
         buildConfigField("String", "YANDEX_REDIRECT_URI", "\"$yandexRedirect\"")
-        buildConfigField("String", "VK_REDIRECT_URI", "\"$vkRedirect\"")
+
+        // VK ID для Android не даёт задать свой redirect_uri — он вычисляется как
+        // vk{clientId}://vk.ru/blank.html. Схема статична в манифесте, а client_id
+        // известен только на сборке, поэтому подставляем его через manifestPlaceholders.
+        // Пока клиент не задан, ставим заведомо нерабочую схему вместо пустой строки —
+        // пустая схема в манифесте не проходит валидацию и ломает сборку целиком.
+        manifestPlaceholders["vkRedirectScheme"] =
+            if (vkClientId.isNotBlank()) "vk$vkClientId" else "vk-not-configured"
     }
 
     // Постоянный ключ подписи для debug-сборок.
