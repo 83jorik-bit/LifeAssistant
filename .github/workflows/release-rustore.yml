@@ -38,6 +38,11 @@ on:
         description: 'Загрузить сборку в RuStore Консоль как черновик'
         type: boolean
         default: false
+      artifact_type:
+        description: 'Что загружать: apk проще для первой публикации, aab требует ключа подписи в Консоли'
+        type: choice
+        options: [apk, aab]
+        default: apk
       send_to_moderation:
         description: 'Отправить черновик на модерацию (публикация для пользователей!)'
         type: boolean
@@ -61,6 +66,22 @@ jobs:
         run: |
           echo "MAPKIT_API_KEY=${{ secrets.MAPKIT_API_KEY }}" > local.properties
           echo "RASP_API_KEY=${{ secrets.RASP_API_KEY }}" >> local.properties
+
+      # Без подписи RuStore файл не примет, а сборка при отсутствии секретов
+      # молча выходит неподписанной. Лучше остановиться здесь с понятным текстом.
+      - name: Check release signing secrets
+        if: ${{ inputs.publish }}
+        run: |
+          missing=""
+          [ -z "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" ] && missing="$missing RELEASE_KEYSTORE_BASE64"
+          [ -z "${{ secrets.RELEASE_STORE_PASSWORD }}" ] && missing="$missing RELEASE_STORE_PASSWORD"
+          [ -z "${{ secrets.RELEASE_KEY_ALIAS }}" ] && missing="$missing RELEASE_KEY_ALIAS"
+          [ -z "${{ secrets.RELEASE_KEY_PASSWORD }}" ] && missing="$missing RELEASE_KEY_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "Не заданы секреты релизной подписи:$missing"
+            echo "Без них сборка будет неподписанной, и RuStore её отклонит."
+            exit 1
+          fi
 
       - name: Restore release keystore
         run: echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 -d > release.keystore
@@ -90,7 +111,8 @@ jobs:
           RUSTORE_KEY_ID: ${{ secrets.RUSTORE_KEY_ID }}
           RUSTORE_PRIVATE_KEY: ${{ secrets.RUSTORE_PRIVATE_KEY }}
           PACKAGE_NAME: com.lifenavigator.app
-          AAB_PATH: app/build/outputs/bundle/release/app-release.aab
+          ARTIFACT_TYPE: ${{ inputs.artifact_type }}
+          ARTIFACT_PATH: ${{ inputs.artifact_type == 'aab' && 'app/build/outputs/bundle/release/app-release.aab' || 'app/build/outputs/apk/release/app-release.apk' }}
           SEND_TO_MODERATION: ${{ inputs.send_to_moderation }}
         run: bash scripts/rustore-publish.sh
 

@@ -19,11 +19,28 @@ API="https://public-api.rustore.ru"
 KEY_ID="${RUSTORE_KEY_ID:?Не задан RUSTORE_KEY_ID}"
 PRIVATE_KEY="${RUSTORE_PRIVATE_KEY:?Не задан RUSTORE_PRIVATE_KEY}"
 PACKAGE_NAME="${PACKAGE_NAME:?Не задан PACKAGE_NAME}"
-AAB_PATH="${AAB_PATH:?Не задан AAB_PATH}"
+ARTIFACT_PATH="${ARTIFACT_PATH:?Не задан ARTIFACT_PATH}"
+# apk или aab. AAB требует, чтобы в Консоли заранее был загружен ключ подписи
+# приложения — RuStore, в отличие от Google Play, сам файлы не подписывает.
+# Поэтому для первой публикации APK проще.
+ARTIFACT_TYPE="${ARTIFACT_TYPE:-apk}"
 SEND_TO_MODERATION="${SEND_TO_MODERATION:-false}"
 
-if [[ ! -f "$AAB_PATH" ]]; then
-  echo "Файл сборки не найден: $AAB_PATH" >&2
+if [[ ! -f "$ARTIFACT_PATH" ]]; then
+  echo "Файл сборки не найден: $ARTIFACT_PATH" >&2
+  exit 1
+fi
+
+if [[ "$ARTIFACT_TYPE" != "apk" && "$ARTIFACT_TYPE" != "aab" ]]; then
+  echo "ARTIFACT_TYPE должен быть apk или aab, получено: $ARTIFACT_TYPE" >&2
+  exit 1
+fi
+
+# Проверяем, что файл вообще подписан: RuStore неподписанные артефакты отклоняет,
+# и лучше узнать об этом здесь, чем из отказа API.
+if ! unzip -l "$ARTIFACT_PATH" 2>/dev/null | grep -qiE "META-INF/.*\.(RSA|DSA|EC)$"; then
+  echo "Похоже, файл не подписан: $ARTIFACT_PATH" >&2
+  echo "Проверьте секреты RELEASE_KEYSTORE_BASE64, RELEASE_STORE_PASSWORD, RELEASE_KEY_ALIAS, RELEASE_KEY_PASSWORD." >&2
   exit 1
 fi
 
@@ -84,16 +101,16 @@ fi
 echo "Создан черновик версии: $VERSION_ID"
 
 # --- Загрузка сборки ---
-UPLOAD_RESPONSE="$(curl -sS -X POST "$API/public/v1/application/${PACKAGE_NAME}/version/${VERSION_ID}/aab" \
+UPLOAD_RESPONSE="$(curl -sS -X POST "$API/public/v1/application/${PACKAGE_NAME}/version/${VERSION_ID}/${ARTIFACT_TYPE}" \
   -H "Public-Token: ${TOKEN}" \
-  -F "file=@${AAB_PATH}")"
+  -F "file=@${ARTIFACT_PATH}")"
 
 if [[ "$(echo "$UPLOAD_RESPONSE" | jq -r '.code // empty')" != "OK" ]]; then
   echo "Не удалось загрузить сборку. Ответ RuStore:" >&2
   echo "$UPLOAD_RESPONSE" >&2
   exit 1
 fi
-echo "Сборка загружена в черновик."
+echo "Сборка (${ARTIFACT_TYPE}) загружена в черновик."
 
 # --- Отправка на модерацию ---
 if [[ "$SEND_TO_MODERATION" == "true" ]]; then
