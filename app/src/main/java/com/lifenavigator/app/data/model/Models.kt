@@ -60,27 +60,45 @@ data class PlacePoint(
 /**
  * Одна трата, введённая пользователем.
  *
+ * Категория хранится строковым ключом, а не значением перечисления: кроме встроенных
+ * категорий пользователь может завести свои. Для встроенной ключ равен имени элемента
+ * NeedCategory (например "GROCERY"), для своей — "custom:<uuid>". Благодаря этому
+ * траты, записанные до появления своих категорий, читаются без всякой миграции.
+ *
  * Дата хранится числом дней от начала эпохи: так её просто сохранять и сравнивать,
  * не таща в хранилище форматы и часовые пояса.
  */
 data class Expense(
     val id: String,
-    val category: NeedCategory,
+    val categoryKey: String,
     val amountRub: Int,
     val note: String?,
     val dateEpochDay: Long
 )
 
-data class BudgetCategory(
-    val category: NeedCategory,
-    val monthlyLimitRub: Int,
+/** Категория бюджета, заведённая пользователем вручную. */
+data class CustomCategory(
+    val key: String,
+    val title: String
+)
+
+/**
+ * Строка бюджета для показа на экране: встроенная категория или своя — неважно,
+ * экран работает с ними одинаково.
+ */
+data class BudgetLine(
+    val key: String,
+    val title: String,
+    val emoji: String,
+    val colorArgb: Long,
+    val limitRub: Int,
     val spentRub: Int
 ) {
     val progress: Float
-        get() = if (monthlyLimitRub == 0) 0f else (spentRub.toFloat() / monthlyLimitRub.toFloat()).coerceIn(0f, 1.5f)
+        get() = if (limitRub == 0) 0f else (spentRub.toFloat() / limitRub.toFloat()).coerceIn(0f, 1.5f)
 
     val isOverLimit: Boolean
-        get() = spentRub > monthlyLimitRub
+        get() = limitRub > 0 && spentRub > limitRub
 }
 
 /**

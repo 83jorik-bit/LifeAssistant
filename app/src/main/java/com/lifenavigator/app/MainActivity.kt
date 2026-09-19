@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import com.lifenavigator.app.data.local.LocalProfileStore
 import com.lifenavigator.app.data.local.ThemeController
 import com.lifenavigator.app.data.local.ThemeMode
 import androidx.compose.foundation.layout.padding
@@ -29,6 +30,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         ThemeController.load(this)
+        LocalProfileStore.load(this)
         setContent {
             val themeMode by ThemeController.mode.collectAsState()
             val darkTheme = when (themeMode) {

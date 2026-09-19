@@ -3,7 +3,8 @@ package com.lifenavigator.app.ui.screens.budget
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import com.lifenavigator.app.data.local.BudgetStorage
-import com.lifenavigator.app.data.model.BudgetCategory
+import com.lifenavigator.app.data.model.BudgetLine
+import com.lifenavigator.app.data.model.CustomCategory
 import com.lifenavigator.app.data.model.Expense
 import com.lifenavigator.app.data.model.NeedCategory
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -13,57 +14,86 @@ import java.time.LocalDate
 import java.time.YearMonth
 import java.util.UUID
 
+/** Цвет и значок для категорий, заведённых вручную. */
+private const val CUSTOM_COLOR = 0xFF5D6D7E
+private const val CUSTOM_EMOJI = "🏷"
+
 data class BudgetUiState(
-    /** Месяц, который сейчас смотрим. */
     val month: YearMonth = YearMonth.now(),
-    val limits: Map<NeedCategory, Int> = emptyMap(),
-    /** Все траты, включая прошлые месяцы — фильтруем при показе. */
+    /** Доход по месяцам: ключ — "2026-09". */
+    val incomeByMonth: Map<String, Int> = emptyMap(),
+    /** Лимиты общие для всех месяцев — план переходит на следующий месяц сам. */
+    val limits: Map<String, Int> = emptyMap(),
+    val customCategories: List<CustomCategory> = emptyList(),
     val allExpenses: List<Expense> = emptyList()
 ) {
-    /** Траты выбранного месяца, свежие сверху. */
+    val income: Int get() = incomeByMonth[month.toString()] ?: 0
+
     val expensesOfMonth: List<Expense>
         get() = allExpenses
             .filter { YearMonth.from(LocalDate.ofEpochDay(it.dateEpochDay)) == month }
             .sortedByDescending { it.dateEpochDay }
 
-    /** Категории с лимитом или тратами — пустые не показываем, чтобы не засорять экран. */
-    val categories: List<BudgetCategory>
+    /** Все категории, о которых мы знаем: встроенные плюс заведённые вручную. */
+    val allCategoryKeys: List<Pair<String, String>>
+        get() = NeedCategory.entries.map { it.name to "${it.emoji} ${it.displayName}" } +
+            customCategories.map { it.key to "$CUSTOM_EMOJI ${it.title}" }
+
+    fun titleOf(key: String): String = resolve(key).let { "${it.emoji} ${it.title}" }
+
+    /** Строки бюджета: показываем только те, где есть лимит или траты. */
+    val lines: List<BudgetLine>
         get() {
-            val spentByCategory = expensesOfMonth.groupBy { it.category }
+            val spentByKey = expensesOfMonth.groupBy { it.categoryKey }
                 .mapValues { (_, list) -> list.sumOf { it.amountRub } }
 
-            return NeedCategory.entries
-                .map { category ->
-                    BudgetCategory(
-                        category = category,
-                        monthlyLimitRub = limits[category] ?: 0,
-                        spentRub = spentByCategory[category] ?: 0
+            val keys = (limits.keys + spentByKey.keys).distinct()
+            return keys
+                .map { key ->
+                    val info = resolve(key)
+                    BudgetLine(
+                        key = key,
+                        title = info.title,
+                        emoji = info.emoji,
+                        colorArgb = info.colorArgb,
+                        limitRub = limits[key] ?: 0,
+                        spentRub = spentByKey[key] ?: 0
                     )
                 }
-                .filter { it.monthlyLimitRub > 0 || it.spentRub > 0 }
+                .sortedByDescending { it.spentRub }
         }
+
+    private data class CategoryInfo(val title: String, val emoji: String, val colorArgb: Long)
+
+    private fun resolve(key: String): CategoryInfo {
+        NeedCategory.entries.firstOrNull { it.name == key }?.let {
+            return CategoryInfo(it.displayName, it.emoji, it.colorArgb)
+        }
+        val custom = customCategories.firstOrNull { it.key == key }
+        return CategoryInfo(custom?.title ?: "Без категории", CUSTOM_EMOJI, CUSTOM_COLOR)
+    }
 
     val totalSpent: Int get() = expensesOfMonth.sumOf { it.amountRub }
     val totalLimit: Int get() = limits.values.sum()
     val remaining: Int get() = totalLimit - totalSpent
-    val overLimitCount: Int get() = categories.count { it.isOverLimit }
+    val overLimitCount: Int get() = lines.count { it.isOverLimit }
+
+    /** Сколько от дохода осталось нераспределённым по лимитам. */
+    val unplanned: Int get() = income - totalLimit
+
+    /** Сколько от дохода осталось на руках с учётом фактических трат. */
+    val incomeLeft: Int get() = income - totalSpent
 
     val isCurrentMonth: Boolean get() = month == YearMonth.now()
 
-    /** Сколько дней осталось до конца месяца (для текущего месяца — включая сегодня). */
     val daysLeft: Int
-        get() = if (isCurrentMonth) {
-            month.lengthOfMonth() - LocalDate.now().dayOfMonth + 1
-        } else {
-            0
-        }
+        get() = if (isCurrentMonth) month.lengthOfMonth() - LocalDate.now().dayOfMonth + 1 else 0
 
-    /**
-     * Сколько можно тратить в день, чтобы уложиться в лимит.
-     * Считается только для текущего месяца и только если остаток положительный.
-     */
     val dailyAllowance: Int?
-        get() = if (isCurrentMonth && daysLeft > 0 && remaining > 0) remaining / daysLeft else null
+        get() {
+            val base = if (income > 0) incomeLeft else remaining
+            return if (isCurrentMonth && daysLeft > 0 && base > 0) base / daysLeft else null
+        }
 }
 
 class BudgetViewModel(application: Application) : AndroidViewModel(application) {
@@ -74,20 +104,45 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
     val uiState: StateFlow<BudgetUiState> = _uiState
 
     init {
+        reload()
+    }
+
+    private fun reload() {
         _uiState.update {
-            it.copy(limits = storage.loadLimits(), allExpenses = storage.loadExpenses())
+            it.copy(
+                incomeByMonth = storage.loadIncome(),
+                limits = storage.loadLimits(),
+                customCategories = storage.loadCustomCategories(),
+                allExpenses = storage.loadExpenses()
+            )
         }
     }
 
-    fun setLimit(category: NeedCategory, limitRub: Int) {
-        storage.saveLimit(category, limitRub)
+    fun setIncome(amountRub: Int) {
+        storage.saveIncome(_uiState.value.month, amountRub)
+        _uiState.update { it.copy(incomeByMonth = storage.loadIncome()) }
+    }
+
+    fun setLimit(categoryKey: String, limitRub: Int) {
+        storage.saveLimit(categoryKey, limitRub)
         _uiState.update { it.copy(limits = storage.loadLimits()) }
     }
 
-    fun addExpense(category: NeedCategory, amountRub: Int, note: String?, date: LocalDate) {
+    /** Заводит свою категорию и сразу задаёт ей лимит. */
+    fun addCustomCategory(title: String, limitRub: Int) {
+        val category = CustomCategory(key = "custom:${UUID.randomUUID()}", title = title.trim())
+        val updated = _uiState.value.customCategories + category
+        storage.saveCustomCategories(updated)
+        if (limitRub > 0) storage.saveLimit(category.key, limitRub)
+        _uiState.update {
+            it.copy(customCategories = updated, limits = storage.loadLimits())
+        }
+    }
+
+    fun addExpense(categoryKey: String, amountRub: Int, note: String?, date: LocalDate) {
         val expense = Expense(
             id = UUID.randomUUID().toString(),
-            category = category,
+            categoryKey = categoryKey,
             amountRub = amountRub,
             note = note?.takeIf { it.isNotBlank() },
             dateEpochDay = date.toEpochDay()
@@ -108,7 +163,6 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun showNextMonth() {
-        // В будущее не пускаем: планировать траты вперёд этот экран пока не умеет.
         _uiState.update {
             if (it.month < YearMonth.now()) it.copy(month = it.month.plusMonths(1)) else it
         }
