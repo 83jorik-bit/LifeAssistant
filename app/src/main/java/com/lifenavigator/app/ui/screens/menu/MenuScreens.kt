@@ -1,88 +1,78 @@
 package com.lifenavigator.app.ui.screens.menu
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
+import com.lifenavigator.app.data.auth.AuthResult
+import com.lifenavigator.app.data.auth.OAuthProvider
+import com.lifenavigator.app.data.auth.PkceOAuthClient
 import com.lifenavigator.app.data.local.AppSettings
+import com.lifenavigator.app.data.local.ConsentStore
+import com.lifenavigator.app.data.local.ConsentText
 import com.lifenavigator.app.data.local.LocalProfileStore
 import com.lifenavigator.app.data.local.ThemeController
 import com.lifenavigator.app.data.local.ThemeMode
 
 /**
- * Способ входа через внешний ID и что реально нужно, чтобы его подключить.
+ * Вход в приложение.
  *
- * Тексты не выдуманы: это то, что пишут сами провайдеры. Ни один из способов
- * не включён, потому что для каждого нужны свои ключи и согласования, а кнопка,
- * которая ничего не делает, хуже её отсутствия.
- */
-private data class IdProvider(
-    val title: String,
-    val requirement: String,
-    val feasibility: String
-)
-
-private val ID_PROVIDERS = listOf(
-    IdProvider(
-        title = "VK ID",
-        requirement = "Регистрация приложения в кабинете VK ID, client_id и client_secret, " +
-            "отпечаток сертификата подписи. Подключается VK ID SDK для Android (OAuth 2.1), " +
-            "через него доступен и вход по аккаунтам Одноклассников и Mail.",
-        feasibility = "Доступно физическому лицу — регистрироваться как компания не нужно."
-    ),
-    IdProvider(
-        title = "Яндекс ID",
-        requirement = "Регистрация приложения в сервисе Яндекс OAuth, получение client_id " +
-            "и работа по OAuth 2.0.",
-        feasibility = "Обычная регистрация приложения. Для отдельных сценариев Яндекса " +
-            "(например Яндекс Пэй) аккаунт дополнительно должен состоять в организации " +
-            "с правами разработчика."
-    ),
-    IdProvider(
-        title = "Сбер ID",
-        requirement = "Заявка на подключение и настройка получения кодов авторизации; " +
-            "есть SDK для Android. Сервис предназначен для входа физических лиц.",
-        feasibility = "Здесь источники расходятся: в справке Сбера сказано, что отдельных " +
-            "бумажных документов нет и условия принимаются при интеграции, а в обзорных " +
-            "материалах упоминаются анкета и договор. Это нужно уточнять напрямую у Сбера."
-    ),
-    IdProvider(
-        title = "Госуслуги (ЕСИА)",
-        requirement = "Учётная запись ЮРИДИЧЕСКОГО лица на Госуслугах, квалифицированная " +
-            "электронная подпись юрлица, регистрация информационной системы в технологическом " +
-            "портале ЕСИА, аттестация системы по требованиям информационной безопасности. " +
-            "С 31.12.2026 добавляется поддержка OpenID Connect с подтверждением соответствия " +
-            "требованиям ФСБ.",
-        feasibility = "Самый тяжёлый путь. Физлицу недоступен в принципе: нужна организация, " +
-            "КЭП и аттестованная система. Для приложения такого масштаба это несоразмерно."
-    )
-)
-
-/**
- * Вход в аккаунт.
- *
- * Работает локальный профиль — имя хранится на устройстве. Внешние ID показаны
- * списком с условиями подключения: так видно, что для чего понадобится,
- * и ни одна кнопка не притворяется рабочей.
+ * Порядок принципиальный: сначала согласие на обработку персональных данных, потом вход.
+ * Иначе мы начали бы обрабатывать данные до получения согласия, а это прямо запрещено.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SignInDialog(onDismiss: () -> Unit) {
     val context = LocalContext.current
     val profile by LocalProfileStore.profile.collectAsState()
+    val consent by ConsentStore.consent.collectAsState()
+    val redirect by PkceOAuthClient.redirect.collectAsState()
 
-    var name by remember { mutableStateOf(profile?.name.orEmpty()) }
-    var email by remember { mutableStateOf(profile?.email.orEmpty()) }
+    var showConsent by remember { mutableStateOf(false) }
+    var pendingProvider by remember { mutableStateOf<OAuthProvider?>(null) }
+    var status by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+
+    val consentGiven = consent != null && consent?.version == ConsentText.VERSION
+
+    // Возврат из браузера: меняем код на токен и достаём имя пользователя.
+    LaunchedEffect(redirect) {
+        val uri = redirect ?: return@LaunchedEffect
+        busy = true
+        when (val result = PkceOAuthClient.handleRedirect(uri)) {
+            is AuthResult.Success -> {
+                LocalProfileStore.save(context, result.account.name, result.account.email)
+                status = "Вход выполнен через ${result.account.provider.title}"
+            }
+            is AuthResult.Failure -> status = "Не удалось войти: ${result.message}"
+            AuthResult.Cancelled -> status = "Вход отменён"
+        }
+        busy = false
+        PkceOAuthClient.consumeRedirect()
+    }
+
+    val startLogin: (OAuthProvider) -> Unit = { provider ->
+        val url = PkceOAuthClient.buildAuthorizeUrl(provider)
+        runCatching {
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        }.onFailure {
+            status = "Не нашлось браузера, чтобы открыть страницу входа"
+        }
+    }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
@@ -92,98 +82,128 @@ fun SignInDialog(onDismiss: () -> Unit) {
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 32.dp)
         ) {
-            Text("Профиль", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text("Вход", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+
+            profile?.let {
+                Spacer(Modifier.height(12.dp))
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(12.dp)) {
+                        Text("Вы вошли как", style = MaterialTheme.typography.bodySmall)
+                        Text(it.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        it.email?.let { mail ->
+                            Text(mail, style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedButton(onClick = { LocalProfileStore.clear(context) }) {
+                            Text("Выйти")
+                        }
+                    }
+                }
+            }
 
             Spacer(Modifier.height(16.dp))
 
-            OutlinedTextField(
-                value = name,
-                onValueChange = { name = it.take(40) },
-                label = { Text("Имя") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(Modifier.height(8.dp))
-            OutlinedTextField(
-                value = email,
-                onValueChange = { email = it.take(60) },
-                label = { Text("Почта (необязательно)") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
+            // Шаг 1 — согласие.
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp)) {
+                    Text(
+                        if (consentGiven) "Согласие подписано" else "Шаг 1. Согласие на обработку данных",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        if (consentGiven) {
+                            "Вы подписали согласие. Его можно отозвать в любой момент."
+                        } else {
+                            "Без согласия вход недоступен: обрабатывать данные до его получения нельзя."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    if (consentGiven) {
+                        OutlinedButton(onClick = { ConsentStore.revoke(context) }) {
+                            Text("Отозвать согласие")
+                        }
+                    } else {
+                        Button(onClick = { showConsent = true }) {
+                            Text("Прочитать и подписать")
+                        }
+                    }
+                }
+            }
 
-            Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Spacer(Modifier.height(16.dp))
+            Text("Шаг 2. Вход через существующий ID", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(8.dp))
+
+            OAuthProvider.entries.forEach { provider ->
                 Button(
                     onClick = {
-                        LocalProfileStore.save(context, name.trim(), email.trim())
-                        onDismiss()
+                        if (!consentGiven) {
+                            pendingProvider = provider
+                            showConsent = true
+                        } else {
+                            startLogin(provider)
+                        }
                     },
-                    enabled = name.isNotBlank(),
-                    modifier = Modifier.weight(1f)
+                    enabled = provider.isConfigured && !busy,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp)
                 ) {
-                    Text("Сохранить")
+                    Text("Войти через ${provider.title}")
                 }
-                if (profile != null) {
-                    OutlinedButton(
-                        onClick = {
-                            LocalProfileStore.clear(context)
-                            name = ""
-                            email = ""
-                        },
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text("Удалить")
-                    }
+                if (!provider.isConfigured) {
+                    Text(
+                        "Не настроено: добавьте ${if (provider == OAuthProvider.YANDEX) "YANDEX_CLIENT_ID" else "VK_CLIENT_ID"} " +
+                            "в local.properties и укажите в кабинете адрес возврата ${provider.redirectUri}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
                 }
             }
 
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "Профиль хранится только на этом устройстве и никуда не отправляется. " +
-                    "Это не регистрация: чтобы аккаунт был доступен с другого телефона, " +
-                    "нужен сервер, который будет хранить учётные записи.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            Spacer(Modifier.height(24.dp))
-            Text("Вход через существующий ID", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(4.dp))
-            Text(
-                "Ни один способ не подключён — каждому нужны свои ключи и согласования. " +
-                    "Ниже честно указано, что потребуется.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            Spacer(Modifier.height(12.dp))
-            ID_PROVIDERS.forEach { provider ->
-                Card(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
-                    Column(Modifier.padding(12.dp)) {
-                        Text(provider.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                        Spacer(Modifier.height(4.dp))
-                        Text(provider.requirement, style = MaterialTheme.typography.bodySmall)
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            provider.feasibility,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
+            if (busy) {
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Завершаем вход…", style = MaterialTheme.typography.bodySmall)
                 }
             }
 
-            Spacer(Modifier.height(8.dp))
+            status?.let {
+                Spacer(Modifier.height(8.dp))
+                Text(it, style = MaterialTheme.typography.bodySmall)
+            }
+
+            Spacer(Modifier.height(20.dp))
             Text(
-                "Дополнительных разрешений Android для входа не нужно: хватает доступа " +
-                    "в интернет, который у приложения уже есть. Автоподстановка кода из SMS " +
-                    "потребовала бы либо сервисов Google, от которых мы отказались ради RuStore, " +
-                    "либо чтения SMS — опасного разрешения, которое магазины требуют обосновывать.",
+                "Пароль вводится на странице Яндекса или VK — приложение его не видит " +
+                    "и не хранит. Свой сервер регистрации пока не поднят: почему так " +
+                    "и что для него потребуется, написано в README.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+    }
+
+    if (showConsent) {
+        ConsentSheet(
+            onDismiss = {
+                showConsent = false
+                pendingProvider = null
+            },
+            onSigned = {
+                showConsent = false
+                pendingProvider?.let { startLogin(it) }
+                pendingProvider = null
+            }
+        )
     }
 }
 

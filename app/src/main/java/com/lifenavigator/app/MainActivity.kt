@@ -1,11 +1,14 @@
 package com.lifenavigator.app
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import com.lifenavigator.app.data.auth.PkceOAuthClient
+import com.lifenavigator.app.data.local.ConsentStore
 import com.lifenavigator.app.data.local.LocalProfileStore
 import com.lifenavigator.app.data.local.ThemeController
 import com.lifenavigator.app.data.local.ThemeMode
@@ -27,10 +30,29 @@ import com.lifenavigator.app.ui.screens.subscriptions.SubscriptionsScreen
 import com.lifenavigator.app.ui.theme.LifeNavigatorTheme
 
 class MainActivity : ComponentActivity() {
+
+    /**
+     * Активность объявлена как singleTask, поэтому возврат из браузера приходит сюда,
+     * а не создаёт новый экземпляр. Передаём ссылку экрану входа.
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleAuthRedirect(intent)
+    }
+
+    private fun handleAuthRedirect(intent: Intent?) {
+        val data = intent?.data ?: return
+        if (data.scheme == "lifenavigator") {
+            PkceOAuthClient.redirect.value = data
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         ThemeController.load(this)
         LocalProfileStore.load(this)
+        ConsentStore.load(this)
+        handleAuthRedirect(intent)
         setContent {
             val themeMode by ThemeController.mode.collectAsState()
             val darkTheme = when (themeMode) {
