@@ -12,6 +12,11 @@ name: Release for RuStore
 #   RELEASE_KEY_ALIAS        — алиас ключа
 #   RELEASE_KEY_PASSWORD     — пароль ключа
 #
+# Для автоматической загрузки в RuStore дополнительно:
+#   RUSTORE_KEY_ID           — числовой ID ключа из таблицы ключей в RuStore Консоли
+#                              (именно ID, а не название ключа)
+#   RUSTORE_PRIVATE_KEY      — приватный ключ, выданный при создании пары в Консоли
+#
 # Keystore в base64 получается так:
 #   Windows PowerShell:
 #     [Convert]::ToBase64String([IO.File]::ReadAllBytes("release.keystore")) > keystore.txt
@@ -29,6 +34,14 @@ on:
         description: 'versionName (например 1.0.0)'
         required: true
         default: '1.0.0'
+      publish:
+        description: 'Загрузить сборку в RuStore Консоль как черновик'
+        type: boolean
+        default: false
+      send_to_moderation:
+        description: 'Отправить черновик на модерацию (публикация для пользователей!)'
+        type: boolean
+        default: false
 
 jobs:
   release:
@@ -70,6 +83,16 @@ jobs:
       - name: Remove keystore from runner
         if: always()
         run: rm -f release.keystore
+
+      - name: Publish to RuStore
+        if: ${{ inputs.publish }}
+        env:
+          RUSTORE_KEY_ID: ${{ secrets.RUSTORE_KEY_ID }}
+          RUSTORE_PRIVATE_KEY: ${{ secrets.RUSTORE_PRIVATE_KEY }}
+          PACKAGE_NAME: com.lifenavigator.app
+          AAB_PATH: app/build/outputs/bundle/release/app-release.aab
+          SEND_TO_MODERATION: ${{ inputs.send_to_moderation }}
+        run: bash scripts/rustore-publish.sh
 
       - name: Upload artifacts for RuStore
         uses: actions/upload-artifact@v4
