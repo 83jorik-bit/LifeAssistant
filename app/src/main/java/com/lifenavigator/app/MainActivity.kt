@@ -42,7 +42,9 @@ class MainActivity : ComponentActivity() {
 
     private fun handleAuthRedirect(intent: Intent?) {
         val data = intent?.data ?: return
-        if (data.scheme == "lifenavigator") {
+        // "lifenavigator" — наш адрес для Яндекса. "vk..." — фиксированная схема VK ID
+        // (vk{clientId}://vk.ru/blank.html), у нас на неё отдельный intent-filter в манифесте.
+        if (data.scheme == "lifenavigator" || data.scheme?.startsWith("vk") == true) {
             PkceOAuthClient.redirect.value = data
         }
     }

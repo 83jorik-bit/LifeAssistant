@@ -44,21 +44,19 @@ enum class OAuthProvider(
     val isConfigured: Boolean get() = clientId.isNotBlank()
 
     /**
-     * Адрес возврата в приложение. Такую же строку нужно указать в кабинете провайдера,
-     * иначе он откажется отдавать код.
+     * Адрес возврата в приложение.
      *
-     * По умолчанию это своя схема lifenavigator://auth/... — под неё в манифесте уже
-     * объявлен фильтр. Но кабинеты провайдеров принимают не любой формат, поэтому адрес
-     * можно переопределить через local.properties, не трогая код. Если поставите адрес
-     * с https, понадобится ещё настройка App Links (проверка домена) — своей схемы
-     * для этого достаточно, а https требует файла на сайте.
+     * У Яндекса он настраивается в кабинете, и там же есть поле для него.
+     * У VK ID для Android/iOS такого поля в кабинете НЕТ ВООБЩЕ — адрес не задаётся,
+     * а вычисляется по client_id и обязан быть именно таким:
+     * vk{clientId}://vk.ru/blank.html. Отсюда и путаница на скриншотах кабинета —
+     * поле искали не там, потому что его в принципе не существует.
      */
     val redirectUri: String
         get() {
-            val override = when (this) {
-                YANDEX -> BuildConfig.YANDEX_REDIRECT_URI
-                VK -> BuildConfig.VK_REDIRECT_URI
-            }
+            if (this == VK) return "vk$clientId://vk.ru/blank.html"
+
+            val override = BuildConfig.YANDEX_REDIRECT_URI
             return override.takeIf { it.isNotBlank() } ?: "$REDIRECT_SCHEME://auth/$redirectPath"
         }
 

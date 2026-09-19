@@ -47,14 +47,30 @@
             </intent-filter>
 
             <!--
-                Возврат из браузера после входа через Яндекс ID или VK ID.
-                Такой же адрес нужно указать в кабинете провайдера.
+                Возврат из браузера после входа через Яндекс ID. Этот адрес
+                (lifenavigator://auth/yandex) указывается в кабинете Яндекса вручную.
             -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="lifenavigator" android:host="auth" />
+            </intent-filter>
+
+            <!--
+                Возврат из браузера после входа через VK ID. В отличие от Яндекса,
+                этот адрес нигде в кабинете VK не указывается — он фиксированный и
+                вычисляется автоматически как vk{clientId}://vk.ru/blank.html.
+                Схема подставляется на сборке из VK_CLIENT_ID, см. app/build.gradle.kts.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="${vkRedirectScheme}"
+                    android:host="vk.ru"
+                    android:path="/blank.html" />
             </intent-filter>
         </activity>
     </application>
