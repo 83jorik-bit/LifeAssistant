@@ -6,11 +6,17 @@ MAPKIT_API_KEY=your-yandex-mapkit-key-here
 RASP_API_KEY=your-yandex-rasp-key-here
 
 # --- Вход через существующий ID (необязательно) ---
-# Яндекс ID: зарегистрируйте приложение на oauth.yandex.ru,
-#   адрес возврата укажите: lifenavigator://auth/yandex
+# Яндекс ID: oauth.yandex.ru, тип приложения — «Для авторизации пользователей»
+#   (у типа «для доступа к API» адрес возврата зафиксирован и не меняется).
+#   Адрес возврата по умолчанию: lifenavigator://auth/yandex
 YANDEX_CLIENT_ID=
-# VK ID: кабинет id.vk.ru, адрес возврата: lifenavigator://auth/vk
+# VK ID: кабинет id.vk.ru, адрес возврата по умолчанию: lifenavigator://auth/vk
 VK_CLIENT_ID=
+
+# Если кабинет провайдера не принимает свою схему, укажите здесь тот адрес,
+# который он принял. Пусто — используется значение по умолчанию.
+YANDEX_REDIRECT_URI=
+VK_REDIRECT_URI=
 
 # --- Релизная подпись (нужна только для сборки релиза под RuStore) ---
 # Создать ключ: keytool -genkeypair -v -keystore release.keystore \

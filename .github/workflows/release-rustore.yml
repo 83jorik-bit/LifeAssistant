@@ -66,6 +66,12 @@ jobs:
         run: |
           echo "MAPKIT_API_KEY=${{ secrets.MAPKIT_API_KEY }}" > local.properties
           echo "RASP_API_KEY=${{ secrets.RASP_API_KEY }}" >> local.properties
+          # Вход через внешние ID. Если секреты не заданы, значения останутся пустыми
+          # и кнопки входа будут показаны неактивными — сборка при этом не ломается.
+          echo "YANDEX_CLIENT_ID=${{ secrets.YANDEX_CLIENT_ID }}" >> local.properties
+          echo "VK_CLIENT_ID=${{ secrets.VK_CLIENT_ID }}" >> local.properties
+          echo "YANDEX_REDIRECT_URI=${{ secrets.YANDEX_REDIRECT_URI }}" >> local.properties
+          echo "VK_REDIRECT_URI=${{ secrets.VK_REDIRECT_URI }}" >> local.properties
 
       # Без подписи RuStore файл не примет, а сборка при отсутствии секретов
       # молча выходит неподписанной. Лучше остановиться здесь с понятным текстом.
