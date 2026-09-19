@@ -46,8 +46,21 @@ enum class OAuthProvider(
     /**
      * Адрес возврата в приложение. Такую же строку нужно указать в кабинете провайдера,
      * иначе он откажется отдавать код.
+     *
+     * По умолчанию это своя схема lifenavigator://auth/... — под неё в манифесте уже
+     * объявлен фильтр. Но кабинеты провайдеров принимают не любой формат, поэтому адрес
+     * можно переопределить через local.properties, не трогая код. Если поставите адрес
+     * с https, понадобится ещё настройка App Links (проверка домена) — своей схемы
+     * для этого достаточно, а https требует файла на сайте.
      */
-    val redirectUri: String get() = "$REDIRECT_SCHEME://auth/$redirectPath"
+    val redirectUri: String
+        get() {
+            val override = when (this) {
+                YANDEX -> BuildConfig.YANDEX_REDIRECT_URI
+                VK -> BuildConfig.VK_REDIRECT_URI
+            }
+            return override.takeIf { it.isNotBlank() } ?: "$REDIRECT_SCHEME://auth/$redirectPath"
+        }
 
     companion object {
         const val REDIRECT_SCHEME = "lifenavigator"

@@ -18,6 +18,10 @@ val raspApiKey: String = localProperties.getProperty("RASP_API_KEY") ?: ""
 // client_id провайдеров входа. Пусто — кнопка входа показывается неактивной.
 val yandexClientId: String = localProperties.getProperty("YANDEX_CLIENT_ID") ?: ""
 val vkClientId: String = localProperties.getProperty("VK_CLIENT_ID") ?: ""
+// Адрес возврата можно переопределить: у провайдеров разные требования к его виду,
+// и подгонять его правкой кода неудобно.
+val yandexRedirect: String = localProperties.getProperty("YANDEX_REDIRECT_URI") ?: ""
+val vkRedirect: String = localProperties.getProperty("VK_REDIRECT_URI") ?: ""
 
 // Параметры РЕЛИЗНОГО ключа подписи. Берутся из local.properties (локально) либо из
 // переменных окружения (сборка в CI). В репозиторий релизный ключ не кладётся никогда:
@@ -53,6 +57,8 @@ android {
         buildConfigField("String", "RASP_API_KEY", "\"$raspApiKey\"")
         buildConfigField("String", "YANDEX_CLIENT_ID", "\"$yandexClientId\"")
         buildConfigField("String", "VK_CLIENT_ID", "\"$vkClientId\"")
+        buildConfigField("String", "YANDEX_REDIRECT_URI", "\"$yandexRedirect\"")
+        buildConfigField("String", "VK_REDIRECT_URI", "\"$vkRedirect\"")
     }
 
     // Постоянный ключ подписи для debug-сборок.
