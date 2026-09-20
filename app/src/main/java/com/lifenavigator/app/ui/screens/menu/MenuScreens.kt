@@ -1,7 +1,11 @@
 package com.lifenavigator.app.ui.screens.menu
 
+import android.Manifest
+import android.app.Activity
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -18,15 +22,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
+import com.lifenavigator.app.BuildConfig
 import com.lifenavigator.app.data.auth.AuthResult
 import com.lifenavigator.app.data.auth.OAuthProvider
 import com.lifenavigator.app.data.auth.PkceOAuthClient
 import com.lifenavigator.app.data.local.AppSettings
+import com.lifenavigator.app.data.local.BudgetExporter
+import com.lifenavigator.app.data.local.BudgetNotifier
 import com.lifenavigator.app.data.local.ConsentStore
 import com.lifenavigator.app.data.local.ConsentText
 import com.lifenavigator.app.data.local.LocalProfileStore
 import com.lifenavigator.app.data.local.ThemeController
 import com.lifenavigator.app.data.local.ThemeMode
+import com.lifenavigator.app.data.local.UserDataEraser
+import com.lifenavigator.app.data.model.NeedCategory
 
 /**
  * Вход в приложение.
@@ -84,13 +93,15 @@ fun SignInDialog(onDismiss: () -> Unit) {
         ) {
             Text("Вход", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
 
-            profile?.let {
+            if (profile != null) {
+                // Вход выполнен — незачем снова показывать шаги согласия и кнопки
+                // провайдеров, только профиль и выход.
                 Spacer(Modifier.height(12.dp))
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(12.dp)) {
                         Text("Вы вошли как", style = MaterialTheme.typography.bodySmall)
-                        Text(it.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                        it.email?.let { mail ->
+                        Text(profile!!.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        profile!!.email?.let { mail ->
                             Text(mail, style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
@@ -100,6 +111,7 @@ fun SignInDialog(onDismiss: () -> Unit) {
                         }
                     }
                 }
+                return@Column
             }
 
             Spacer(Modifier.height(16.dp))
@@ -140,7 +152,8 @@ fun SignInDialog(onDismiss: () -> Unit) {
             Spacer(Modifier.height(8.dp))
 
             OAuthProvider.entries.forEach { provider ->
-                Button(
+                BrandedSignInButton(
+                    provider = provider,
                     onClick = {
                         if (!consentGiven) {
                             pendingProvider = provider
@@ -153,9 +166,7 @@ fun SignInDialog(onDismiss: () -> Unit) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 8.dp)
-                ) {
-                    Text("Войти через ${provider.title}")
-                }
+                )
                 if (!provider.isConfigured) {
                     Text(
                         "Не настроено: добавьте ${if (provider == OAuthProvider.YANDEX) "YANDEX_CLIENT_ID" else "VK_CLIENT_ID"} " +
@@ -216,12 +227,28 @@ fun SignInDialog(onDismiss: () -> Unit) {
 fun SettingsSheet(
     currentRadiusMeters: Float,
     onRadiusSelected: (Float) -> Unit,
+    searchCategories: Set<NeedCategory>,
+    onSearchCategoriesChanged: (Set<NeedCategory>) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
+    var showAbout by remember { mutableStateOf(false) }
+    var showEraseConfirm by remember { mutableStateOf(false) }
+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        // Отказ в системном диалоге — тоже осознанный выбор пользователя, поэтому
+        // переключатель остаётся в том положении, которое реально соответствует
+        // разрешённому состоянию, а не в том, что нажал палец.
+        AppSettings(context).budgetAlertsEnabled = granted
+    }
+
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
             Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 32.dp)
         ) {
@@ -250,9 +277,39 @@ fun SettingsSheet(
 
             Spacer(Modifier.height(24.dp))
 
+            Text("Категории поиска", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Каждая категория — это несколько запросов к Яндексу при каждом обновлении. " +
+                    "Выключите ненужные, чтобы список обновлялся быстрее.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(10.dp))
+
+            NeedCategory.entries.forEach { category ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 2.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("${category.emoji} ${category.displayName}", style = MaterialTheme.typography.bodyMedium)
+                    Switch(
+                        checked = category in searchCategories,
+                        onCheckedChange = { checked ->
+                            val updated = if (checked) searchCategories + category else searchCategories - category
+                            onSearchCategoriesChanged(updated)
+                        }
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(24.dp))
+
             Text("Оформление", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(10.dp))
-            val context = LocalContext.current
             val currentTheme by ThemeController.mode.collectAsState()
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ThemeMode.entries.forEach { mode ->
@@ -265,12 +322,179 @@ fun SettingsSheet(
             }
 
             Spacer(Modifier.height(24.dp))
+
+            Text("Бюджет", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(10.dp))
+
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Уведомлять о превышении лимита", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        "Разовое уведомление в момент, когда трата переводит категорию за лимит.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                var budgetAlertsEnabled by remember { mutableStateOf(AppSettings(context).budgetAlertsEnabled) }
+                Switch(
+                    checked = budgetAlertsEnabled,
+                    onCheckedChange = { checked ->
+                        if (checked) {
+                            if (BudgetNotifier.hasPermission(context)) {
+                                AppSettings(context).budgetAlertsEnabled = true
+                                budgetAlertsEnabled = true
+                            } else {
+                                // Разрешение запросится асинхронно — саму настройку включит
+                                // колбэк лаунчера выше, только если пользователь согласится.
+                                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                budgetAlertsEnabled = true
+                            }
+                        } else {
+                            AppSettings(context).budgetAlertsEnabled = false
+                            budgetAlertsEnabled = false
+                        }
+                    }
+                )
+            }
+
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = {
+                    val intent = BudgetExporter.buildShareIntent(context)
+                    context.startActivity(Intent.createChooser(intent, "Экспорт бюджета"))
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Экспортировать бюджет в CSV")
+            }
+
+            Spacer(Modifier.height(24.dp))
             Text(
                 "Список мест сохраняется между запусками: при открытии приложения показываются " +
                     "результаты прошлого сеанса, пока не обновится геолокация.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+
+            Spacer(Modifier.height(24.dp))
+            HorizontalDivider()
+            Spacer(Modifier.height(12.dp))
+
+            OutlinedButton(onClick = { showAbout = true }, modifier = Modifier.fillMaxWidth()) {
+                Text("О приложении")
+            }
+
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = { showEraseConfirm = true },
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Удалить мои данные")
+            }
+        }
+    }
+
+    if (showAbout) {
+        AboutSheet(onDismiss = { showAbout = false })
+    }
+
+    if (showEraseConfirm) {
+        AlertDialog(
+            onDismissRequest = { showEraseConfirm = false },
+            title = { Text("Удалить все данные?") },
+            text = {
+                Text(
+                    "Сотрутся профиль, согласие на обработку данных, весь бюджет и список " +
+                        "мест из прошлого сеанса. Действие необратимо. После удаления " +
+                        "приложение перезапустится."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        UserDataEraser.eraseAll(context)
+                        showEraseConfirm = false
+                        (context as? Activity)?.recreate()
+                    }
+                ) {
+                    Text("Удалить", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEraseConfirm = false }) { Text("Отмена") }
+            }
+        )
+    }
+}
+
+/**
+ * «О приложении»: версия, источники данных (обязательная атрибуция по условиям Яндекса)
+ * и полный текст политики обработки данных — той же самой, что подписывают при входе.
+ * Отдельного хостинга для политики нет, поэтому показываем тот же текст, а не выдуманную
+ * ссылку на несуществующую страницу.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AboutSheet(onDismiss: () -> Unit) {
+    var showPolicy by remember { mutableStateOf(false) }
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 32.dp)
+        ) {
+            Text("О приложении", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Жизненный навигатор",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                "Версия ${BuildConfig.VERSION_NAME} (сборка ${BuildConfig.VERSION_CODE})",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Spacer(Modifier.height(20.dp))
+            Text("Источники данных", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Карта, поиск мест и маршруты — сервис Яндекс Карты.\n" +
+                    "Расписание вокзалов и станций — сервис Яндекс Расписания.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Spacer(Modifier.height(20.dp))
+            OutlinedButton(onClick = { showPolicy = true }, modifier = Modifier.fillMaxWidth()) {
+                Text("Обработка персональных данных")
+            }
+        }
+    }
+
+    if (showPolicy) {
+        ModalBottomSheet(onDismissRequest = { showPolicy = false }) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 32.dp)
+            ) {
+                Text(ConsentText.TITLE, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(12.dp))
+                Text(ConsentText.BODY, style = MaterialTheme.typography.bodySmall)
+            }
         }
     }
 }

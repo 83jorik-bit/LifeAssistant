@@ -403,6 +403,8 @@ fun MapScreen(viewModel: MapViewModel = viewModel()) {
         SettingsSheet(
             currentRadiusMeters = state.searchRadiusMeters,
             onRadiusSelected = { viewModel.setSearchRadius(it) },
+            searchCategories = state.searchCategories,
+            onSearchCategoriesChanged = { viewModel.setSearchCategories(it) },
             onDismiss = { showSettings = false }
         )
     }

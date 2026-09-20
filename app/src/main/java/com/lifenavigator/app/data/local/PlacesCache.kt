@@ -17,8 +17,7 @@ class PlacesCache(context: Context) {
 
     private val prefs = context.getSharedPreferences("places_cache", Context.MODE_PRIVATE)
 
-    fun save(places: List<PlacePoint>) {
-        val array = JSONArray()
+    fun save(places: List<PlacePoint>) {        val array = JSONArray()
         places.forEach { place ->
             array.put(
                 JSONObject().apply {
@@ -81,6 +80,10 @@ class PlacesCache(context: Context) {
 
     private fun JSONObject.optStringOrNull(key: String): String? =
         if (isNull(key)) null else optString(key).takeIf { it.isNotBlank() }
+
+    fun clear() {
+        prefs.edit().clear().apply()
+    }
 
     private companion object {
         const val KEY_PLACES = "places_json"
