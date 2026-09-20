@@ -2,6 +2,8 @@ package com.lifenavigator.app.ui.screens.budget
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
+import com.lifenavigator.app.data.local.AppSettings
+import com.lifenavigator.app.data.local.BudgetNotifier
 import com.lifenavigator.app.data.local.BudgetStorage
 import com.lifenavigator.app.data.model.BudgetLine
 import com.lifenavigator.app.data.model.CustomCategory
@@ -150,6 +152,25 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
         val updated = _uiState.value.allExpenses + expense
         storage.saveExpenses(updated)
         _uiState.update { it.copy(allExpenses = updated) }
+        maybeNotifyOverLimit(categoryKey, date)
+    }
+
+    /**
+     * Уведомляет о превышении лимита, только если эта трата стала той самой, что
+     * перевела категорию за черту (а не сотой подряд трате уже давно просроченной
+     * категории — иначе уведомление сыпалось бы на каждую мелкую покупку).
+     */
+    private fun maybeNotifyOverLimit(categoryKey: String, date: LocalDate) {
+        val app = getApplication<Application>()
+        if (!AppSettings(app).budgetAlertsEnabled) return
+        if (YearMonth.from(date) != _uiState.value.month) return
+
+        val line = _uiState.value.lines.firstOrNull { it.key == categoryKey } ?: return
+        if (!line.isOverLimit) return
+        // Превышение уже было ДО этой траты — значит уведомление по ней уже показывалось раньше.
+        if (line.spentRub - amountRub >= line.limitRub) return
+
+        BudgetNotifier.notifyOverLimit(app, line.title, line.spentRub, line.limitRub)
     }
 
     fun deleteExpense(id: String) {

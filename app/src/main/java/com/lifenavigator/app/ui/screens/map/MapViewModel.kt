@@ -30,6 +30,12 @@ data class MapUiState(
     val selectedPlace: PlacePoint? = null,
     /** Радиус поиска в метрах — задаётся в настройках. */
     val searchRadiusMeters: Float = AppSettings.DEFAULT_RADIUS,
+    /**
+     * Какие категории реально запрашиваются у Яндекса при обновлении списка —
+     * настройка из AppSettings, отдельная от selectedCategories (тот фильтр только
+     * показывает/прячет уже загруженные места и сети не трогает).
+     */
+    val searchCategories: Set<NeedCategory> = NeedCategory.entries.toSet(),
     /** Место, для которого открыто расписание. null — шторка расписания закрыта. */
     val schedulePlace: PlacePoint? = null,
     val isScheduleLoading: Boolean = false,
@@ -46,18 +52,6 @@ data class MapUiState(
             )
 }
 
-private val SEARCHABLE_CATEGORIES = listOf(
-    NeedCategory.GROCERY,
-    NeedCategory.CAFE,
-    NeedCategory.PHARMACY,
-    NeedCategory.CLOTHING,
-    NeedCategory.BEAUTY,
-    NeedCategory.PICKUP_POINT,
-    NeedCategory.ATM,
-    NeedCategory.TRANSPORT,
-    NeedCategory.EDUCATION,
-    NeedCategory.CLINIC
-)
 
 class MapViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -75,9 +69,22 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
             it.copy(
                 places = cached,
                 isLoading = false,
-                searchRadiusMeters = settings.searchRadiusMeters
+                searchRadiusMeters = settings.searchRadiusMeters,
+                searchCategories = settings.searchCategories
             )
         }
+    }
+
+    /** Какие категории реально искать у Яндекса — влияет на число сетевых запросов. */
+    fun setSearchCategories(categories: Set<NeedCategory>) {
+        // Пустой набор означал бы "не искать вообще ничего" — это, скорее всего, не то,
+        // что имел в виду пользователь, поэтому пустой выбор трактуем как "все категории".
+        val safe = categories.ifEmpty { NeedCategory.entries.toSet() }
+        settings.searchCategories = safe
+        _uiState.update { it.copy(searchCategories = safe) }
+        // Список мог отражать уже не те категории, которые теперь ищем — обновляем сразу,
+        // если знаем, где пользователь.
+        _uiState.value.userPoint?.let { loadRealPlacesNear(it) }
     }
 
     /** Категории включаются и выключаются независимо — их можно комбинировать. */
@@ -144,7 +151,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
             _uiState.update { it.copy(isRefreshingRealData = true, userPoint = userPoint) }
             val radius = _uiState.value.searchRadiusMeters
 
-            val results = SEARCHABLE_CATEGORIES
+            val results = _uiState.value.searchCategories
                 .map { category ->
                     async { YandexSearchRepository.searchCategory(userPoint, category, radius) }
                 }

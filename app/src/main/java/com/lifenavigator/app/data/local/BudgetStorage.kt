@@ -122,6 +122,10 @@ class BudgetStorage(context: Context) {
 
     // --- Общее ---
 
+    fun clearAll() {
+        prefs.edit().clear().apply()
+    }
+
     private fun readJsonObject(key: String, valueOf: (JSONObject, String) -> Int?): Map<String, Int> {
         val raw = prefs.getString(key, null) ?: return emptyMap()
         return try {

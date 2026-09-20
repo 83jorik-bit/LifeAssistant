@@ -1,9 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <uses-permission android:name="android.permission.INTERNET" />    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- Уведомление о превышении лимита бюджета. С Android 13 это разрешение запрашивается
+         во время работы приложения, а не выдаётся автоматически при установке. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!--
         Начиная с Android 11 приложение по умолчанию "не видит" другие пакеты, и попытка
@@ -73,6 +77,18 @@
                     android:path="/blank.html" />
             </intent-filter>
         </activity>
+
+        <!-- FileProvider для экспорта бюджета в CSV: с Android 7 нельзя передавать
+             другим приложениям голый file:// URI, только через провайдер. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>
