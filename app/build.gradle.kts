@@ -21,13 +21,16 @@ val vkClientId: String = localProperties.getProperty("VK_CLIENT_ID") ?: ""
 // Адрес возврата у Яндекса можно переопределить, если кабинет потребует другой вид.
 // У VK ID для Android такого адреса вообще не задаётся — он фиксирован, см. ниже.
 val yandexRedirect: String = localProperties.getProperty("YANDEX_REDIRECT_URI") ?: ""
-
 // Параметры РЕЛИЗНОГО ключа подписи. Берутся из local.properties (локально) либо из
 // переменных окружения (сборка в CI). В репозиторий релизный ключ не кладётся никогда:
 // потеря или утечка этого ключа означает, что обновлять приложение в RuStore
 // под тем же package больше не получится.
 fun secret(name: String): String? =
     localProperties.getProperty(name) ?: System.getenv(name)
+
+// Адрес собственного сервера (папка backend/). Пусто — приложение работает
+// полностью локально, синхронизация просто не предлагается.
+val backendBaseUrl: String = secret("BACKEND_BASE_URL") ?: ""
 
 val releaseStoreFile = secret("RELEASE_STORE_FILE")
 val releaseStorePassword = secret("RELEASE_STORE_PASSWORD")
@@ -57,6 +60,7 @@ android {
         buildConfigField("String", "YANDEX_CLIENT_ID", "\"$yandexClientId\"")
         buildConfigField("String", "VK_CLIENT_ID", "\"$vkClientId\"")
         buildConfigField("String", "YANDEX_REDIRECT_URI", "\"$yandexRedirect\"")
+        buildConfigField("String", "BACKEND_BASE_URL", "\"$backendBaseUrl\"")
 
         // VK ID для Android не даёт задать свой redirect_uri — он вычисляется как
         // vk{clientId}://vk.ru/blank.html. Схема статична в манифесте, а client_id

@@ -71,6 +71,7 @@ jobs:
           echo "YANDEX_CLIENT_ID=${{ secrets.YANDEX_CLIENT_ID }}" >> local.properties
           echo "VK_CLIENT_ID=${{ secrets.VK_CLIENT_ID }}" >> local.properties
           echo "YANDEX_REDIRECT_URI=${{ secrets.YANDEX_REDIRECT_URI }}" >> local.properties
+          echo "BACKEND_BASE_URL=${{ secrets.BACKEND_BASE_URL }}" >> local.properties
           echo "VK_REDIRECT_URI=${{ secrets.VK_REDIRECT_URI }}" >> local.properties
 
       # Без подписи RuStore файл не примет, а сборка при отсутствии секретов

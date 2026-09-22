@@ -99,6 +99,7 @@ object UserDataEraser {
     fun eraseAll(context: Context) {
         LocalProfileStore.clear(context)
         ConsentStore.revoke(context)
+        SessionStore.clear(context)
         PlacesCache(context).clear()
         BudgetStorage(context).clearAll()
         // Настройки (радиус, темы, выбранные категории) — это предпочтения показа,

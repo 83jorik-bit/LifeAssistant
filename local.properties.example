@@ -18,6 +18,12 @@ VK_CLIENT_ID=
 YANDEX_REDIRECT_URI=
 VK_REDIRECT_URI=
 
+# --- Свой сервер хранения данных (необязательно) ---
+# Адрес развёрнутого сервера из папки backend/, без слэша на конце.
+# Пусто — приложение работает только локально, без синхронизации.
+# Пример: https://api.example.ru
+BACKEND_BASE_URL=
+
 # --- Релизная подпись (нужна только для сборки релиза под RuStore) ---
 # Создать ключ: keytool -genkeypair -v -keystore release.keystore \
 #   -alias lifenavigator -keyalg RSA -keysize 2048 -validity 10950
