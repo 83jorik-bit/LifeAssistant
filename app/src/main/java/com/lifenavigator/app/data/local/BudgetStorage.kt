@@ -33,6 +33,15 @@ class BudgetStorage(context: Context) {
         writeJsonObject(KEY_INCOME, income)
     }
 
+    /**
+     * Полная замена дохода по всем месяцам. Нужна при приёме снимка с сервера:
+     * там синхронизация идёт целиком, и дописывать поверх старого нельзя —
+     * иначе удалённые на другом устройстве записи воскресали бы при каждой загрузке.
+     */
+    fun replaceIncome(income: Map<String, Int>) {
+        writeJsonObject(KEY_INCOME, income.filterValues { it > 0 })
+    }
+
     // --- Лимиты ---
 
     /**
@@ -48,6 +57,11 @@ class BudgetStorage(context: Context) {
         val limits = loadLimits().toMutableMap()
         if (limitRub > 0) limits[categoryKey] = limitRub else limits.remove(categoryKey)
         writeJsonObject(KEY_LIMITS, limits)
+    }
+
+    /** Полная замена лимитов — по той же причине, что и replaceIncome. */
+    fun replaceLimits(limits: Map<String, Int>) {
+        writeJsonObject(KEY_LIMITS, limits.filterValues { it > 0 })
     }
 
     // --- Свои категории ---

@@ -14,6 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -26,16 +27,22 @@ import com.lifenavigator.app.BuildConfig
 import com.lifenavigator.app.data.auth.AuthResult
 import com.lifenavigator.app.data.auth.OAuthProvider
 import com.lifenavigator.app.data.auth.PkceOAuthClient
+import com.lifenavigator.app.data.backend.BackendApi
+import com.lifenavigator.app.data.backend.BackendResult
+import com.lifenavigator.app.data.backend.BudgetSnapshot
 import com.lifenavigator.app.data.local.AppSettings
 import com.lifenavigator.app.data.local.BudgetExporter
 import com.lifenavigator.app.data.local.BudgetNotifier
+import com.lifenavigator.app.data.local.BudgetStorage
 import com.lifenavigator.app.data.local.ConsentStore
 import com.lifenavigator.app.data.local.ConsentText
 import com.lifenavigator.app.data.local.LocalProfileStore
+import com.lifenavigator.app.data.local.SessionStore
 import com.lifenavigator.app.data.local.ThemeController
 import com.lifenavigator.app.data.local.ThemeMode
 import com.lifenavigator.app.data.local.UserDataEraser
 import com.lifenavigator.app.data.model.NeedCategory
+import kotlinx.coroutines.launch
 
 /**
  * Вход в приложение.
@@ -66,6 +73,23 @@ fun SignInDialog(onDismiss: () -> Unit) {
             is AuthResult.Success -> {
                 LocalProfileStore.save(context, result.account.name, result.account.email)
                 status = "Вход выполнен через ${result.account.provider.title}"
+
+                // Сервер — не обязательное условие входа: без него приложение
+                // продолжает работать полностью локально, как и раньше.
+                if (BackendApi.isConfigured) {
+                    val providerKey = if (result.account.provider == OAuthProvider.YANDEX) "yandex" else "vk"
+                    when (val login = BackendApi.login(providerKey, result.account.accessToken)) {
+                        is BackendResult.Success -> {
+                            SessionStore.save(context, login.value)
+                            status = "${status}. Данные подключены к серверу."
+                        }
+                        is BackendResult.Failure -> {
+                            // Не считаем это провалом входа: профиль уже сохранён локально,
+                            // сервер — это только необязательная синхронизация поверх него.
+                            status = "${status}. Сервер сейчас недоступен: ${login.message}"
+                        }
+                    }
+                }
             }
             is AuthResult.Failure -> status = "Не удалось войти: ${result.message}"
             AuthResult.Cancelled -> status = "Вход отменён"
@@ -106,7 +130,10 @@ fun SignInDialog(onDismiss: () -> Unit) {
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Spacer(Modifier.height(8.dp))
-                        OutlinedButton(onClick = { LocalProfileStore.clear(context) }) {
+                        OutlinedButton(onClick = {
+                            LocalProfileStore.clear(context)
+                            SessionStore.clear(context)
+                        }) {
                             Text("Выйти")
                         }
                     }
@@ -232,6 +259,7 @@ fun SettingsSheet(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    val eraseScope = rememberCoroutineScope()
     var showAbout by remember { mutableStateOf(false) }
     var showEraseConfirm by remember { mutableStateOf(false) }
 
@@ -373,6 +401,104 @@ fun SettingsSheet(
             }
 
             Spacer(Modifier.height(24.dp))
+            Text("Синхронизация с сервером", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(4.dp))
+
+            val sessionToken by SessionStore.token.collectAsState()
+            var syncStatus by remember { mutableStateOf<String?>(null) }
+            var syncBusy by remember { mutableStateOf(false) }
+            val syncScope = rememberCoroutineScope()
+
+            when {
+                !BackendApi.isConfigured -> Text(
+                    "Не настроено: добавьте BACKEND_BASE_URL в local.properties, если хотите " +
+                        "хранить профиль, согласие и бюджет ещё и на своём сервере (см. папку backend/ " +
+                        "в репозитории). Без этого всё продолжает работать только на устройстве.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                sessionToken == null -> Text(
+                    "Сервер настроен, но вы не входили через Яндекс ID или VK ID — синхронизация " +
+                        "включается вместе с входом.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                else -> {
+                    Text(
+                        "Синхронизация целым снимком: «Отправить» заменяет бюджет на сервере тем, что " +
+                            "на этом телефоне; «Получить» — наоборот. Автоматически ничего не отправляется.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = {
+                                val token = sessionToken ?: return@OutlinedButton
+                                syncBusy = true
+                                syncScope.launch {
+                                    val snapshot = BudgetStorage(context).let {
+                                        BudgetSnapshot(
+                                            income = it.loadIncome(),
+                                            limits = it.loadLimits(),
+                                            customCategories = it.loadCustomCategories(),
+                                            expenses = it.loadExpenses()
+                                        )
+                                    }
+                                    syncStatus = when (val result = BackendApi.pushBudget(token, snapshot)) {
+                                        is BackendResult.Success -> "Бюджет отправлен на сервер"
+                                        is BackendResult.Failure -> "Не удалось отправить: ${result.message}"
+                                    }
+                                    syncBusy = false
+                                }
+                            },
+                            enabled = !syncBusy,
+                            modifier = Modifier.weight(1f)
+                        ) { Text("Отправить") }
+
+                        OutlinedButton(
+                            onClick = {
+                                val token = sessionToken ?: return@OutlinedButton
+                                syncBusy = true
+                                syncScope.launch {
+                                    when (val result = BackendApi.fetchBudget(token)) {
+                                        is BackendResult.Success -> {
+                                            val storage = BudgetStorage(context)
+                                            val snapshot = result.value
+                                            storage.replaceIncome(snapshot.income)
+                                            storage.replaceLimits(snapshot.limits)
+                                            storage.saveCustomCategories(snapshot.customCategories)
+                                            storage.saveExpenses(snapshot.expenses)
+                                            syncStatus = "Бюджет получен с сервера. " +
+                                                "Откройте вкладку «Бюджет» заново, чтобы увидеть изменения."
+                                        }
+                                        is BackendResult.Failure -> syncStatus = "Не удалось получить: ${result.message}"
+                                    }
+                                    syncBusy = false
+                                }
+                            },
+                            enabled = !syncBusy,
+                            modifier = Modifier.weight(1f)
+                        ) { Text("Получить") }
+                    }
+                    if (syncBusy) {
+                        Spacer(Modifier.height(8.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Синхронизация…", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                    syncStatus?.let {
+                        Spacer(Modifier.height(4.dp))
+                        Text(it, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(24.dp))
             Text(
                 "Список мест сохраняется между запусками: при открытии приложения показываются " +
                     "результаты прошлого сеанса, пока не обновится геолокация.",
@@ -417,6 +543,15 @@ fun SettingsSheet(
             confirmButton = {
                 TextButton(
                     onClick = {
+                        // Если сервер настроен и есть сессия — просим удалить и там.
+                        // Best-effort и намеренно НЕ блокирует локальное удаление:
+                        // сервер может быть недоступен, а данные на телефоне должны
+                        // стереться в любом случае — это то, что реально в руках
+                        // пользователя, в отличие от доступности стороннего сервера.
+                        val sessionToken = SessionStore.token.value
+                        if (sessionToken != null && BackendApi.isConfigured) {
+                            eraseScope.launch { BackendApi.deleteAccount(sessionToken) }
+                        }
                         UserDataEraser.eraseAll(context)
                         showEraseConfirm = false
                         (context as? Activity)?.recreate()

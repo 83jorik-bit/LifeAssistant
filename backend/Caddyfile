@@ -1,0 +1,4 @@
+# Замените на свой домен перед запуском.
+api.example.ru {
+    reverse_proxy backend:3000
+}

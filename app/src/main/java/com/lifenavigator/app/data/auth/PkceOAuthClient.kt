@@ -16,7 +16,10 @@ import android.util.Base64
 data class OAuthAccount(
     val provider: OAuthProvider,
     val name: String,
-    val email: String?
+    val email: String?,
+    /** access_token провайдера. Нужен, чтобы наш сервер (если настроен) мог сам
+     *  проверить его у Яндекса/VK и завести сессию — см. BackendApi.login. */
+    val accessToken: String
 )
 
 sealed class AuthResult {
@@ -158,7 +161,8 @@ object PkceOAuthClient {
                 name = json.optString("real_name").takeIf { it.isNotBlank() }
                     ?: json.optString("display_name").takeIf { it.isNotBlank() }
                     ?: json.optString("login"),
-                email = json.optString("default_email").takeIf { it.isNotBlank() }
+                email = json.optString("default_email").takeIf { it.isNotBlank() },
+                accessToken = token
             )
 
             OAuthProvider.VK -> {
@@ -169,7 +173,8 @@ object PkceOAuthClient {
                     provider = provider,
                     name = listOf(first, last).filter { it.isNotBlank() }.joinToString(" ")
                         .ifBlank { "Пользователь VK" },
-                    email = user.optString("email").takeIf { it.isNotBlank() }
+                    email = user.optString("email").takeIf { it.isNotBlank() },
+                    accessToken = token
                 )
             }
         }

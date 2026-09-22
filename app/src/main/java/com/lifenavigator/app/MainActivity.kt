@@ -10,6 +10,7 @@ import androidx.compose.runtime.getValue
 import com.lifenavigator.app.data.auth.PkceOAuthClient
 import com.lifenavigator.app.data.local.ConsentStore
 import com.lifenavigator.app.data.local.LocalProfileStore
+import com.lifenavigator.app.data.local.SessionStore
 import com.lifenavigator.app.data.local.ThemeController
 import com.lifenavigator.app.data.local.ThemeMode
 import androidx.compose.foundation.layout.padding
@@ -54,6 +55,7 @@ class MainActivity : ComponentActivity() {
         ThemeController.load(this)
         LocalProfileStore.load(this)
         ConsentStore.load(this)
+        SessionStore.load(this)
         handleAuthRedirect(intent)
         setContent {
             val themeMode by ThemeController.mode.collectAsState()

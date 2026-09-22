@@ -20,9 +20,12 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.lifenavigator.app.data.backend.BackendApi
 import com.lifenavigator.app.data.local.ConsentStore
 import com.lifenavigator.app.data.local.ConsentText
+import com.lifenavigator.app.data.local.SessionStore
 import java.io.ByteArrayOutputStream
+import kotlinx.coroutines.launch
 
 /**
  * Экран согласия на обработку персональных данных с подписью.
@@ -121,11 +124,28 @@ fun ConsentSheet(
             )
 
             Spacer(Modifier.height(16.dp))
+            val scope = rememberCoroutineScope()
             Button(
                 onClick = {
                     val png = renderSignature(strokes, canvasWidth, canvasHeight)
                     ConsentStore.save(context, png)
                     onSigned()
+
+                    // Best-effort: если сервер настроен и уже есть сессия, отправляем
+                    // запись о согласии и туда. Если нет сессии (ещё не входили) —
+                    // отправится позже, при следующем успешном входе, потому что вход
+                    // всегда идёт следом за подписанием (см. SignInDialog).
+                    val sessionToken = SessionStore.token.value
+                    if (sessionToken != null && BackendApi.isConfigured) {
+                        scope.launch {
+                            BackendApi.pushConsent(
+                                sessionToken,
+                                ConsentText.VERSION,
+                                java.time.Instant.now().epochSecond,
+                                png
+                            )
+                        }
+                    }
                 },
                 enabled = hasSignature,
                 modifier = Modifier.fillMaxWidth()
