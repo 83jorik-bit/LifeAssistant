@@ -8,6 +8,10 @@
     <!-- Уведомление о превышении лимита бюджета. С Android 13 это разрешение запрашивается
          во время работы приложения, а не выдаётся автоматически при установке. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Камера: сканирование QR с чеков и QR для оплаты по СБП.
+         Запрашивается в момент открытия сканера, а не при старте приложения. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <!--
         Начиная с Android 11 приложение по умолчанию "не видит" другие пакеты, и попытка
@@ -83,6 +87,20 @@
                     android:path="/blank.html" />
             </intent-filter>
         </activity>
+
+        <!--
+            Служба чтения банковских уведомлений. Включается пользователем вручную
+            в системных настройках: разрешение BIND_NOTIFICATION_LISTENER_SERVICE
+            выдаётся только так, запросить его диалогом изнутри приложения нельзя.
+        -->
+        <service
+            android:name=".data.money.BankNotificationListener"
+            android:exported="false"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
 
         <!-- FileProvider для экспорта бюджета в CSV: с Android 7 нельзя передавать
              другим приложениям голый file:// URI, только через провайдер. -->
