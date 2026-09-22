@@ -162,6 +162,36 @@ object YandexMapsLauncher {
         openFirstAvailable(context, candidates)
     }
 
+    /**
+     * Строит маршрут в Яндекс Навигаторе — это отдельное приложение от Яндекс Карт,
+     * и у него своя схема. Если начальная точка не указана, Навигатор строит
+     * маршрут от текущего местоположения пользователя.
+     *
+     * ВАЖНАЯ ОГОВОРКА из документации Яндекса: помимо координат в URL полагается
+     * добавлять параметры, идентифицирующие приложение (client + signature,
+     * подписанные RSA-ключом доступа). Без них пользователи Навигатора версии 2.40
+     * и выше «могут столкнуться с ограничениями». Ключа у нас нет, поэтому шлём
+     * только координаты: если Навигатор откажется, сработает запасной вариант —
+     * маршрут в Яндекс Картах, которые таких ограничений не накладывают.
+     */
+    fun buildRouteInNavigator(context: Context, from: Point?, place: PlacePoint) {
+        val params = buildString {
+            append("lat_to=${place.latitude}&lon_to=${place.longitude}")
+            from?.let { append("&lat_from=${it.latitude}&lon_from=${it.longitude}") }
+        }
+
+        val navigatorIntent = Intent(Intent.ACTION_VIEW, Uri.parse("yandexnavi://build_route_on_map?$params"))
+            .setPackage("ru.yandex.yandexnavi")
+
+        try {
+            context.startActivity(navigatorIntent)
+        } catch (e: ActivityNotFoundException) {
+            // Навигатор не установлен — молча уходим в Карты, это тот же маршрут.
+            Toast.makeText(context, "Навигатор не найден, открываем Яндекс Карты", Toast.LENGTH_SHORT).show()
+            buildRoute(context, from, place, RouteType.AUTO)
+        }
+    }
+
     private fun openFirstAvailable(context: Context, uris: List<String>) {
         for (uri in uris) {
             try {

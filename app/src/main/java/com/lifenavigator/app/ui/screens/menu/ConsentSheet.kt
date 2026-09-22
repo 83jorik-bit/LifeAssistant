@@ -5,7 +5,8 @@ import android.graphics.Paint
 import android.util.Base64
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -17,6 +18,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -86,21 +88,42 @@ fun ConsentSheet(
                     .height(160.dp)
                     .clip(RoundedCornerShape(8.dp))
                     .background(Color.White)
+                    // Размер берём здесь, а не внутри блока отрисовки: запись состояния
+                    // прямо во время рисования — верный способ получить лишние круги
+                    // перерисовки, а нужен он только для растра подписи при сохранении.
+                    .onSizeChanged { size ->
+                        canvasWidth = size.width
+                        canvasHeight = size.height
+                    }
                     .pointerInput(Unit) {
-                        detectDragGestures(
-                            onDragStart = { offset ->
-                                strokes.add(mutableListOf(offset))
-                            },
-                            onDrag = { change, _ ->
-                                strokes.lastOrNull()?.add(change.position)
-                                // Без этого жест «утекает» в прокрутку листа и линия рвётся.
+                        // detectDragGestures здесь не годится: он ждёт, пока палец
+                        // сдвинется на порог распознавания, а прокрутка листа, внутри
+                        // которого лежит холст, забирает жест раньше — поэтому подпись
+                        // не рисовалась вовсе. Перехватываем касание с самого нажатия
+                        // и помечаем каждое событие обработанным, чтобы лист не прокручивался.
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            down.consume()
+                            val stroke = mutableStateListOf(down.position)
+                            // ВАЖНО: именно mutableStateListOf, а не mutableListOf.
+                            // Внешний список наблюдаемый, но если сам штрих — обычный
+                            // список, добавление точек Compose не замечает и холст
+                            // не перерисовывается.
+                            strokes.add(stroke)
+
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                if (!change.pressed) {
+                                    change.consume()
+                                    break
+                                }
+                                stroke.add(change.position)
                                 change.consume()
                             }
-                        )
+                        }
                     }
             ) {
-                canvasWidth = size.width.toInt()
-                canvasHeight = size.height.toInt()
                 strokes.forEach { stroke ->
                     for (i in 1 until stroke.size) {
                         drawLine(

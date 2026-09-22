@@ -26,6 +26,12 @@
         </intent>
         <intent>
             <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="yandexnavi" />
+        </intent>
+        <!-- Навигатор запускаем с явным setPackage, поэтому нужен и сам пакет. -->
+        <package android:name="ru.yandex.yandexnavi" />
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />
         </intent>
     </queries>

@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.LocalTaxi
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Schedule
@@ -524,6 +525,18 @@ private fun PlaceDetailsSheet(
                 }
                 Spacer(Modifier.height(8.dp))
             }
+
+            // Навигатор — отдельное приложение от Яндекс Карт, и для поездки за рулём
+            // он удобнее: сразу ведёт по маршруту, а не показывает его на карте.
+            FilledTonalButton(
+                onClick = { YandexMapsLauncher.buildRouteInNavigator(context, userPoint, place) },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Filled.Navigation, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Вести в Навигаторе")
+            }
+            Spacer(Modifier.height(8.dp))
 
             if (!isTransport) {
                 FilledTonalButton(
