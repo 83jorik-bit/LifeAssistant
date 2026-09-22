@@ -37,6 +37,8 @@ import com.lifenavigator.app.data.local.BudgetStorage
 import com.lifenavigator.app.data.local.ConsentStore
 import com.lifenavigator.app.data.local.ConsentText
 import com.lifenavigator.app.data.local.LocalProfileStore
+import com.lifenavigator.app.data.local.StatementImporter
+import com.lifenavigator.app.data.notifications.BankNotificationListener
 import com.lifenavigator.app.data.local.SessionStore
 import com.lifenavigator.app.data.local.ThemeController
 import com.lifenavigator.app.data.local.ThemeMode
@@ -398,6 +400,101 @@ fun SettingsSheet(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Экспортировать бюджет в CSV")
+            }
+
+            var importResult by remember { mutableStateOf<String?>(null) }
+            val importLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.OpenDocument()
+            ) { uri ->
+                if (uri != null) {
+                    val result = StatementImporter.import(context, uri)
+                    importResult = "Добавлено трат: ${result.imported}. " +
+                        "Пропущено строк: ${result.skipped}."
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = { importLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "text/plain", "*/*")) },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Импортировать выписку из CSV")
+            }
+            importResult?.let {
+                Spacer(Modifier.height(4.dp))
+                Text(it, style = MaterialTheme.typography.bodySmall)
+            }
+
+            Spacer(Modifier.height(24.dp))
+            Text("Автоматические траты", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Приложение может читать уведомления банков и превращать их в траты. " +
+                    "Разрешение выдаётся вручную в системных настройках — программно его " +
+                    "запросить нельзя. Уведомления не из банковских приложений отбрасываются " +
+                    "сразу и никуда не записываются.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(10.dp))
+
+            var bankEnabled by remember { mutableStateOf(AppSettings(context).bankNotificationsEnabled) }
+            var bankAutoAdd by remember { mutableStateOf(AppSettings(context).bankNotificationsAutoAdd) }
+            val hasNotificationAccess = BankNotificationListener.hasAccess(context)
+
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Читать уведомления банков", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                Switch(
+                    checked = bankEnabled && hasNotificationAccess,
+                    onCheckedChange = { checked ->
+                        AppSettings(context).bankNotificationsEnabled = checked
+                        bankEnabled = checked
+                        if (checked && !hasNotificationAccess) {
+                            BankNotificationListener.openAccessSettings(context)
+                        }
+                    }
+                )
+            }
+
+            if (bankEnabled && !hasNotificationAccess) {
+                Text(
+                    "Доступ к уведомлениям ещё не выдан. Откройте системные настройки и " +
+                        "включите «Жизненный навигатор» в списке.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+                Spacer(Modifier.height(4.dp))
+                OutlinedButton(onClick = { BankNotificationListener.openAccessSettings(context) }) {
+                    Text("Открыть настройки доступа")
+                }
+            }
+
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Добавлять без подтверждения", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        "Выключено — распознанные траты ждут подтверждения во вкладке «Бюджет». " +
+                            "Разбор уведомлений неточен, поэтому проверять стоит.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = bankAutoAdd,
+                    enabled = bankEnabled,
+                    onCheckedChange = { checked ->
+                        AppSettings(context).bankNotificationsAutoAdd = checked
+                        bankAutoAdd = checked
+                    }
+                )
             }
 
             Spacer(Modifier.height(24.dp))

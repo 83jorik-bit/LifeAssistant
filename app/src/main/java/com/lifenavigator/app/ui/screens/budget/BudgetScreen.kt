@@ -21,7 +21,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lifenavigator.app.data.model.BudgetLine
+import com.lifenavigator.app.data.local.PendingExpense
 import com.lifenavigator.app.data.model.Expense
+import com.lifenavigator.app.data.model.NeedCategory
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
@@ -59,6 +61,30 @@ fun BudgetScreen(viewModel: BudgetViewModel = viewModel()) {
             contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 88.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            if (state.pending.isNotEmpty()) {
+                item {
+                    Text(
+                        "Распознано из уведомлений",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(top = 8.dp, start = 4.dp)
+                    )
+                }
+                items(state.pending, key = { it.id }) { item ->
+                    PendingExpenseCard(
+                        item = item,
+                        title = item.suggestedCategoryKey?.let { state.titleOf(it) },
+                        onConfirm = {
+                            viewModel.confirmPending(
+                                item,
+                                item.suggestedCategoryKey ?: NeedCategory.GROCERY.name
+                            )
+                        },
+                        onDismiss = { viewModel.dismissPending(item.id) }
+                    )
+                }
+            }
+
             item { MonthSwitcher(state, viewModel) }
             item { IncomeCard(state) { incomeDialogOpen = true } }
             item { SummaryCard(state) }
@@ -615,4 +641,47 @@ private fun PaymentStubDialog(onDismiss: () -> Unit) {
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Понятно") } }
     )
+}
+
+/**
+ * Трата, распознанная из банковского уведомления. Показывается до подтверждения,
+ * потому что разбор чужих уведомлений неточен — человек видит сумму и магазин
+ * и решает сам.
+ */
+@Composable
+private fun PendingExpenseCard(
+    item: PendingExpense,
+    title: String?,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Card(
+        Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+    ) {
+        Column(Modifier.padding(12.dp)) {
+            Text(
+                item.amountRub.asRub(),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            item.merchant?.let {
+                Text(it, style = MaterialTheme.typography.bodyMedium)
+            }
+            Text(
+                title?.let { "Предложена категория: $it" } ?: "Категория не определена",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onConfirm, modifier = Modifier.weight(1f)) {
+                    Text("Добавить")
+                }
+                OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
+                    Text("Не трата")
+                }
+            }
+        }
+    }
 }

@@ -136,6 +136,10 @@ dependencies {
     // (MapKitFactory.getInstance().createLocationManager()) — см. MapScreen.
     implementation("androidx.compose.runtime:runtime-livedata:1.6.8")
 
+    // Сканер QR. Взят ZXing, а не ML Kit от Google: ML Kit тянет сервисы Google,
+    // от которых мы отказались ради RuStore (см. раздел про геолокацию).
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+
     implementation(platform("androidx.compose:compose-bom:2024.06.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")

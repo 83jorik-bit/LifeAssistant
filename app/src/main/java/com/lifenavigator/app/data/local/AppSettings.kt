@@ -47,6 +47,29 @@ class AppSettings(context: Context) {
             .putStringSet(KEY_SEARCH_CATEGORIES, value.map { it.name }.toSet())
             .apply()
 
+    /**
+     * Записывать траты автоматически из банковских уведомлений.
+     * Выключено по умолчанию: чтение уведомлений — чувствительная возможность,
+     * включать её без явного желания пользователя нельзя.
+     */
+    var autoExpensesEnabled: Boolean
+        get() = prefs.getBoolean(KEY_AUTO_EXPENSES, false)
+        set(value) = prefs.edit().putBoolean(KEY_AUTO_EXPENSES, value).apply()
+
+    /** Читать уведомления банков и превращать их в траты. */
+    var bankNotificationsEnabled: Boolean
+        get() = prefs.getBoolean(KEY_BANK_NOTIFICATIONS, false)
+        set(value) = prefs.edit().putBoolean(KEY_BANK_NOTIFICATIONS, value).apply()
+
+    /**
+     * Добавлять распознанные траты сразу в бюджет, без подтверждения.
+     * По умолчанию выключено: разбор чужих уведомлений — эвристика, и ошибка
+     * портит именно те данные, ради которых приложение нужно.
+     */
+    var bankNotificationsAutoAdd: Boolean
+        get() = prefs.getBoolean(KEY_BANK_AUTO_ADD, false)
+        set(value) = prefs.edit().putBoolean(KEY_BANK_AUTO_ADD, value).apply()
+
     /** Уведомлять о превышении лимита при добавлении новой траты. */
     var budgetAlertsEnabled: Boolean
         get() = prefs.getBoolean(KEY_BUDGET_ALERTS, false)
@@ -62,6 +85,9 @@ class AppSettings(context: Context) {
         private const val KEY_THEME = "theme_mode"
         private const val KEY_SEARCH_CATEGORIES = "search_categories"
         private const val KEY_BUDGET_ALERTS = "budget_alerts_enabled"
+        private const val KEY_BANK_NOTIFICATIONS = "bank_notifications_enabled"
+        private const val KEY_BANK_AUTO_ADD = "bank_notifications_auto_add"
+        private const val KEY_AUTO_EXPENSES = "auto_expenses_enabled"
     }
 }
 
@@ -101,6 +127,7 @@ object UserDataEraser {
         ConsentStore.revoke(context)
         SessionStore.clear(context)
         PlacesCache(context).clear()
+        PendingExpenseStore(context).clear()
         BudgetStorage(context).clearAll()
         // Настройки (радиус, темы, выбранные категории) — это предпочтения показа,
         // а не персональные данные, поэтому намеренно не стираются вместе с остальным.

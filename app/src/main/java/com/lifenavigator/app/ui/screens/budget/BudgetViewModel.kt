@@ -5,6 +5,8 @@ import androidx.lifecycle.AndroidViewModel
 import com.lifenavigator.app.data.local.AppSettings
 import com.lifenavigator.app.data.local.BudgetNotifier
 import com.lifenavigator.app.data.local.BudgetStorage
+import com.lifenavigator.app.data.local.PendingExpense
+import com.lifenavigator.app.data.local.PendingExpenseStore
 import com.lifenavigator.app.data.model.BudgetLine
 import com.lifenavigator.app.data.model.CustomCategory
 import com.lifenavigator.app.data.model.Expense
@@ -27,7 +29,9 @@ data class BudgetUiState(
     /** Лимиты общие для всех месяцев — план переходит на следующий месяц сам. */
     val limits: Map<String, Int> = emptyMap(),
     val customCategories: List<CustomCategory> = emptyList(),
-    val allExpenses: List<Expense> = emptyList()
+    val allExpenses: List<Expense> = emptyList(),
+    /** Траты, распознанные из банковских уведомлений и ждущие подтверждения. */
+    val pending: List<PendingExpense> = emptyList()
 ) {
     val income: Int get() = incomeByMonth[month.toString()] ?: 0
 
@@ -101,6 +105,7 @@ data class BudgetUiState(
 class BudgetViewModel(application: Application) : AndroidViewModel(application) {
 
     private val storage = BudgetStorage(application)
+    private val pendingStore = PendingExpenseStore(application)
 
     private val _uiState = MutableStateFlow(BudgetUiState())
     val uiState: StateFlow<BudgetUiState> = _uiState
@@ -115,7 +120,8 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
                 incomeByMonth = storage.loadIncome(),
                 limits = storage.loadLimits(),
                 customCategories = storage.loadCustomCategories(),
-                allExpenses = storage.loadExpenses()
+                allExpenses = storage.loadExpenses(),
+                pending = pendingStore.load()
             )
         }
     }
@@ -171,6 +177,28 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
         if (line.spentRub - amountRub >= line.limitRub) return
 
         BudgetNotifier.notifyOverLimit(app, line.title, line.spentRub, line.limitRub)
+    }
+
+    /** Подтверждает распознанную трату: переносит её в бюджет. */
+    fun confirmPending(item: PendingExpense, categoryKey: String) {
+        addExpense(
+            categoryKey = categoryKey,
+            amountRub = item.amountRub,
+            note = item.merchant,
+            date = LocalDate.ofEpochDay(item.dateEpochDay)
+        )
+        pendingStore.remove(item.id)
+        _uiState.update { it.copy(pending = pendingStore.load()) }
+    }
+
+    fun dismissPending(id: String) {
+        pendingStore.remove(id)
+        _uiState.update { it.copy(pending = pendingStore.load()) }
+    }
+
+    /** Перечитывает очередь: уведомления приходят, пока экран уже открыт. */
+    fun refreshPending() {
+        _uiState.update { it.copy(pending = pendingStore.load()) }
     }
 
     fun deleteExpense(id: String) {
