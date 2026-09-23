@@ -32,6 +32,10 @@ fun secret(name: String): String? =
 // полностью локально, синхронизация просто не предлагается.
 val backendBaseUrl: String = secret("BACKEND_BASE_URL") ?: ""
 
+// YandexGPT для ИИ-помощника. Пусто — помощник честно скажет, что не подключён.
+val yandexGptApiKey: String = secret("YANDEX_GPT_API_KEY") ?: ""
+val yandexGptFolderId: String = secret("YANDEX_GPT_FOLDER_ID") ?: ""
+
 val releaseStoreFile = secret("RELEASE_STORE_FILE")
 val releaseStorePassword = secret("RELEASE_STORE_PASSWORD")
 val releaseKeyAlias = secret("RELEASE_KEY_ALIAS")
@@ -61,6 +65,8 @@ android {
         buildConfigField("String", "VK_CLIENT_ID", "\"$vkClientId\"")
         buildConfigField("String", "YANDEX_REDIRECT_URI", "\"$yandexRedirect\"")
         buildConfigField("String", "BACKEND_BASE_URL", "\"$backendBaseUrl\"")
+        buildConfigField("String", "YANDEX_GPT_API_KEY", "\"$yandexGptApiKey\"")
+        buildConfigField("String", "YANDEX_GPT_FOLDER_ID", "\"$yandexGptFolderId\"")
 
         // VK ID для Android не даёт задать свой redirect_uri — он вычисляется как
         // vk{clientId}://vk.ru/blank.html. Схема статична в манифесте, а client_id
