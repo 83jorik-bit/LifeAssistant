@@ -158,7 +158,7 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
         val updated = _uiState.value.allExpenses + expense
         storage.saveExpenses(updated)
         _uiState.update { it.copy(allExpenses = updated) }
-        maybeNotifyOverLimit(categoryKey, date)
+        maybeNotifyOverLimit(categoryKey, amountRub, date)
     }
 
     /**
@@ -166,7 +166,7 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
      * перевела категорию за черту (а не сотой подряд трате уже давно просроченной
      * категории — иначе уведомление сыпалось бы на каждую мелкую покупку).
      */
-    private fun maybeNotifyOverLimit(categoryKey: String, date: LocalDate) {
+    private fun maybeNotifyOverLimit(categoryKey: String, amountRub: Int, date: LocalDate) {
         val app = getApplication<Application>()
         if (!AppSettings(app).budgetAlertsEnabled) return
         if (YearMonth.from(date) != _uiState.value.month) return
