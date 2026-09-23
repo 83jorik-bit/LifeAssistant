@@ -24,6 +24,14 @@ VK_REDIRECT_URI=
 # Пример: https://api.example.ru
 BACKEND_BASE_URL=
 
+# --- ИИ-помощник на YandexGPT (необязательно) ---
+# Консоль Yandex Cloud: создайте сервисный аккаунт с ролью ai.languageModels.user,
+# выпустите для него API-ключ, идентификатор каталога возьмите на главной странице консоли.
+# ВНИМАНИЕ: ключ попадает внутрь APK и извлекаем из него. Для публикации вызов
+# следует проксировать через свой сервер (папка backend/), а не звать напрямую.
+YANDEX_GPT_API_KEY=
+YANDEX_GPT_FOLDER_ID=
+
 # --- Релизная подпись (нужна только для сборки релиза под RuStore) ---
 # Создать ключ: keytool -genkeypair -v -keystore release.keystore \
 #   -alias lifenavigator -keyalg RSA -keysize 2048 -validity 10950
