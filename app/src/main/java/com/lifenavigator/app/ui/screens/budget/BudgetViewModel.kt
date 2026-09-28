@@ -11,6 +11,8 @@ import com.lifenavigator.app.data.model.BudgetLine
 import com.lifenavigator.app.data.model.CustomCategory
 import com.lifenavigator.app.data.model.Expense
 import com.lifenavigator.app.data.model.NeedCategory
+import com.lifenavigator.app.data.money.ExpenseRecorder
+import com.lifenavigator.app.data.notifications.PaymentIntake
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -74,6 +76,14 @@ data class BudgetUiState(
     private fun resolve(key: String): CategoryInfo {
         NeedCategory.entries.firstOrNull { it.name == key }?.let {
             return CategoryInfo(it.displayName, it.emoji, it.colorArgb)
+        }
+        // Служебные строки бюджета, которые создают автоматические источники.
+        // «Переводы» — отдельной статьёй, как просили: это не покупки, и смешивать
+        // деньги, отправленные близким, с тратами на продукты значит искажать бюджет.
+        when (key) {
+            PaymentIntake.TRANSFERS_KEY -> return CategoryInfo("Переводы", "↗️", 0xFF6A5ACD)
+            PaymentIntake.SUBSCRIPTIONS_KEY -> return CategoryInfo("Подписки", "🔁", 0xFFD81B60)
+            ExpenseRecorder.UNCATEGORIZED_KEY -> return CategoryInfo("Без категории", CUSTOM_EMOJI, CUSTOM_COLOR)
         }
         val custom = customCategories.firstOrNull { it.key == key }
         return CategoryInfo(custom?.title ?: "Без категории", CUSTOM_EMOJI, CUSTOM_COLOR)

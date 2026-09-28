@@ -24,6 +24,8 @@ import com.lifenavigator.app.data.model.BudgetLine
 import com.lifenavigator.app.data.local.PendingExpense
 import com.lifenavigator.app.data.model.Expense
 import com.lifenavigator.app.data.model.NeedCategory
+import com.lifenavigator.app.data.money.ExpenseRecorder
+import com.lifenavigator.app.data.notifications.PaymentIntake
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
@@ -74,12 +76,17 @@ fun BudgetScreen(viewModel: BudgetViewModel = viewModel()) {
                     PendingExpenseCard(
                         item = item,
                         title = item.suggestedCategoryKey?.let { state.titleOf(it) },
-                        onConfirm = {
+                        onConfirmPurchase = {
                             viewModel.confirmPending(
                                 item,
-                                item.suggestedCategoryKey ?: NeedCategory.GROCERY.name
+                                when {
+                                    item.kind == "SUBSCRIPTION" -> PaymentIntake.SUBSCRIPTIONS_KEY
+                                    item.suggestedCategoryKey != null -> item.suggestedCategoryKey
+                                    else -> ExpenseRecorder.UNCATEGORIZED_KEY
+                                }
                             )
                         },
+                        onTransferToPerson = { viewModel.confirmPending(item, PaymentIntake.TRANSFERS_KEY) },
                         onDismiss = { viewModel.dismissPending(item.id) }
                     )
                 }
@@ -644,15 +651,18 @@ private fun PaymentStubDialog(onDismiss: () -> Unit) {
 }
 
 /**
- * Трата, распознанная из банковского уведомления. Показывается до подтверждения,
- * потому что разбор чужих уведомлений неточен — человек видит сумму и магазин
- * и решает сам.
+ * Операция из банковского уведомления или SMS, ждущая решения пользователя.
+ *
+ * Для перевода задаётся вопрос: по тексту уведомления нельзя отличить оплату услуги
+ * (мастеру, репетитору) от денег родственнику или перевода между своими счетами.
+ * Три ответа ведут в три разных места бюджета — угадывать здесь нельзя.
  */
 @Composable
 private fun PendingExpenseCard(
     item: PendingExpense,
     title: String?,
-    onConfirm: () -> Unit,
+    onConfirmPurchase: () -> Unit,
+    onTransferToPerson: () -> Unit,
     onDismiss: () -> Unit
 ) {
     Card(
@@ -660,26 +670,66 @@ private fun PendingExpenseCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
     ) {
         Column(Modifier.padding(12.dp)) {
-            Text(
-                item.amountRub.asRub(),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-            item.merchant?.let {
-                Text(it, style = MaterialTheme.typography.bodyMedium)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    item.amountRub.asRub(),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    buildString {
+                        append(if (item.source == "SMS") "SMS" else "уведомление")
+                        item.cardTail?.let { append(" · карта *$it") }
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
-            Text(
-                title?.let { "Предложена категория: $it" } ?: "Категория не определена",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+
+            when {
+                item.isTransfer -> Text("Перевод", style = MaterialTheme.typography.bodyMedium)
+                item.subscriptionService != null ->
+                    Text("Подписка: ${item.subscriptionService}", style = MaterialTheme.typography.bodyMedium)
+                else -> item.merchant?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+            }
+
             Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onConfirm, modifier = Modifier.weight(1f)) {
-                    Text("Добавить")
+
+            if (item.isTransfer) {
+                Text(
+                    "Что это за перевод?",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(Modifier.height(6.dp))
+                Button(onClick = onConfirmPurchase, modifier = Modifier.fillMaxWidth()) {
+                    Text("Оплата товаров или услуг")
                 }
-                OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
-                    Text("Не трата")
+                OutlinedButton(onClick = onTransferToPerson, modifier = Modifier.fillMaxWidth()) {
+                    Text("Перевод человеку")
+                }
+                TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
+                    Text("Между своими счетами — не трата")
+                }
+            } else {
+                Text(
+                    when {
+                        item.subscriptionService != null -> "Попадёт в строку «Подписки»"
+                        title != null -> "Предложена категория: $title"
+                        else -> "Категория не определена — попадёт в «Без категории»"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = onConfirmPurchase, modifier = Modifier.weight(1f)) {
+                        Text("Добавить")
+                    }
+                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
+                        Text("Не трата")
+                    }
                 }
             }
         }

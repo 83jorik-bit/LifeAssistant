@@ -56,6 +56,11 @@ class AppSettings(context: Context) {
         get() = prefs.getBoolean(KEY_AUTO_EXPENSES, false)
         set(value) = prefs.edit().putBoolean(KEY_AUTO_EXPENSES, value).apply()
 
+    /** Читать банковские SMS и превращать их в траты. */
+    var bankSmsEnabled: Boolean
+        get() = prefs.getBoolean(KEY_BANK_SMS, false)
+        set(value) = prefs.edit().putBoolean(KEY_BANK_SMS, value).apply()
+
     /** Читать уведомления банков и превращать их в траты. */
     var bankNotificationsEnabled: Boolean
         get() = prefs.getBoolean(KEY_BANK_NOTIFICATIONS, false)
@@ -86,6 +91,7 @@ class AppSettings(context: Context) {
         private const val KEY_SEARCH_CATEGORIES = "search_categories"
         private const val KEY_BUDGET_ALERTS = "budget_alerts_enabled"
         private const val KEY_BANK_NOTIFICATIONS = "bank_notifications_enabled"
+        private const val KEY_BANK_SMS = "bank_sms_enabled"
         private const val KEY_BANK_AUTO_ADD = "bank_notifications_auto_add"
         private const val KEY_AUTO_EXPENSES = "auto_expenses_enabled"
     }

@@ -5,86 +5,113 @@ import android.net.Uri
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
+/**
+ * added — записано, skipped — пропущено осознанно (поступление или уже записанный дубль),
+ * failed — строка не разобрана (нет даты или суммы). Разделение важно: «не разобрано»
+ * сигнализирует о незнакомом формате выписки, а «пропущено» — нормальная работа.
+ */
 data class ImportResult(val added: Int, val skipped: Int, val failed: Int)
 
 /**
- * Импорт выписки из банковского приложения (CSV).
+ * Импорт банковской выписки из CSV.
  *
- * Единого формата выписок не существует — каждый банк выгружает по-своему.
- * Поэтому разбор намеренно терпимый: ищем в каждой строке дату и сумму, а не
- * требуем строго определённый порядок колонок. Строки, где не нашлось ни того,
- * ни другого, просто пропускаются и попадают в счётчик — пользователь увидит,
- * сколько строк не поддалось, вместо молчаливой потери данных.
+ * Закрывает прошлое: чтение уведомлений ловит траты только с момента включения.
+ * Единого формата выписки у банков нет, поэтому разбор терпимый — ищем в строке
+ * дату и сумму, а не требуем конкретных колонок.
  *
- * Файл читается через системный выбор файла, поэтому разрешение на доступ
- * к хранилищу не нужно: Android сам даёт доступ к выбранному файлу.
+ * Запись идёт через ExpenseRecorder, поэтому повторный импорт того же файла или
+ * наложение на уже распознанные уведомления не создаёт дублей.
  */
 object StatementImporter {
 
-    private val DATE_PATTERNS = listOf(
-        "dd.MM.yyyy" to Regex("""\b(\d{2}\.\d{2}\.\d{4})\b"""),
-        "yyyy-MM-dd" to Regex("""\b(\d{4}-\d{2}-\d{2})\b""")
+    private val DATE_FORMATS = listOf(
+        DateTimeFormatter.ofPattern("dd.MM.yyyy"),
+        DateTimeFormatter.ofPattern("yyyy-MM-dd"),
+        DateTimeFormatter.ofPattern("dd/MM/yyyy")
     )
 
-    private val AMOUNT_REGEX = Regex("""(-?\d[\d\s\u00A0]*[.,]\d{2})""")
+    private val DATE_REGEX = Regex("""\d{2}[./]\d{2}[./]\d{4}|\d{4}-\d{2}-\d{2}""")
+
+    /**
+     * Сумма как отдельное поле выписки.
+     *
+     * Здесь две ловушки, обе проверены на реальных строках:
+     * 1. Дата «12.09.2026» содержит «12.09», похожее на сумму. Поэтому сумму ищем
+     *    только в части строки ПОСЛЕ даты.
+     * 2. В «PYATEROCHKA 5432;-1250,50» простое выражение цепляется за «5432»
+     *    из названия магазина. Поэтому число считается суммой, только если оно
+     *    с копейками или со знаком и не примыкает к букве или цифре.
+     */
+    private val AMOUNT_REGEX = Regex(
+        """(?<![\w])([-+]?\d{1,3}(?:[ \u00A0]\d{3})*[.,]\d{1,2}|[-+]?\d+[.,]\d{1,2}|[-+]\d[\d \u00A0]*)(?![\w])"""
+    )
+
+    private val INCOME_WORDS = listOf("зачисл", "пополн", "поступл", "возврат", "кэшбэк", "кешбэк")
 
     fun import(context: Context, uri: Uri): ImportResult {
         var added = 0
         var skipped = 0
         var failed = 0
 
-        context.contentResolver.openInputStream(uri)?.bufferedReader()?.useLines { lines ->
-            lines.forEach { line ->
-                if (line.isBlank()) return@forEach
+        val text = context.contentResolver.openInputStream(uri)?.use { it.bufferedReader().readText() }
+            ?: return ImportResult(0, 0, 0)
 
-                val date = extractDate(line)
-                val amount = extractAmount(line)
-                if (date == null || amount == null) {
-                    failed++
-                    return@forEach
-                }
-                // Положительные суммы в выписке — это поступления, а не траты.
-                if (amount >= 0) {
-                    skipped++
-                    return@forEach
-                }
+        text.lineSequence().forEach { line ->
+            if (line.isBlank()) return@forEach
 
-                val recorded = ExpenseRecorder.record(
-                    context = context,
-                    amountRub = Math.round(-amount).toInt(),
-                    note = extractNote(line),
-                    date = date,
-                    categoryKey = ExpenseRecorder.categoryKeyFor(extractNote(line))
-                )
-                if (recorded) added++ else skipped++
+            val dateText = DATE_REGEX.find(line)?.value
+            val date = dateText?.let { parseDate(it) }
+            if (dateText == null || date == null) {
+                failed++
+                return@forEach
             }
-        } ?: return ImportResult(0, 0, 0)
+
+            val tail = line.substringAfter(dateText)
+            val numbers = AMOUNT_REGEX.findAll(tail)
+                .map { it.groupValues[1].replace(" ", "").replace("\u00A0", "").replace(',', '.') }
+                .mapNotNull { it.toDoubleOrNull() }
+                .filter { it != 0.0 }
+                .toList()
+            if (numbers.isEmpty()) {
+                failed++
+                return@forEach
+            }
+
+            val negative = numbers.firstOrNull { it < 0 }
+            // Поступления в бюджет расходов не импортируем.
+            if (negative == null && INCOME_WORDS.any { it in line.lowercase() }) {
+                skipped++
+                return@forEach
+            }
+            val amountRub = Math.round(Math.abs(negative ?: numbers.first())).toInt()
+            if (amountRub <= 0) {
+                failed++
+                return@forEach
+            }
+
+            val note = tail
+                .replace(AMOUNT_REGEX, " ")
+                .split(';', ',', '\t')
+                .map { it.trim() }
+                .firstOrNull { it.length in 2..40 }
+
+            val recorded = ExpenseRecorder.record(
+                context = context,
+                amountRub = amountRub,
+                note = note,
+                date = date,
+                categoryKey = ExpenseRecorder.categoryKeyFor(note)
+            )
+            if (recorded) added++ else skipped++
+        }
 
         return ImportResult(added, skipped, failed)
     }
 
-    private fun extractDate(line: String): LocalDate? {
-        DATE_PATTERNS.forEach { (pattern, regex) ->
-            val value = regex.find(line)?.groupValues?.get(1) ?: return@forEach
-            runCatching {
-                return LocalDate.parse(value, DateTimeFormatter.ofPattern(pattern))
-            }
+    private fun parseDate(text: String): LocalDate? {
+        DATE_FORMATS.forEach { format ->
+            runCatching { return LocalDate.parse(text, format) }
         }
         return null
     }
-
-    private fun extractAmount(line: String): Double? =
-        AMOUNT_REGEX.find(line)?.groupValues?.get(1)
-            ?.replace('\u00A0', ' ')
-            ?.replace(" ", "")
-            ?.replace(',', '.')
-            ?.toDoubleOrNull()
-
-    /** Назначение платежа: самый длинный текстовый фрагмент строки. */
-    private fun extractNote(line: String): String? =
-        line.split(';', ',', '\t')
-            .map { it.trim().trim('"') }
-            .filter { it.length > 3 && !it.any(Char::isDigit) }
-            .maxByOrNull { it.length }
-            ?.take(40)
 }
