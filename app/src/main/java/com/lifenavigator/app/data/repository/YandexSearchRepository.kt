@@ -157,6 +157,29 @@ object YandexSearchRepository {
             }
             .map { (_, group) -> group.firstOrNull { it.transitStopId != null } ?: group.first() }
 
+    /**
+     * Ищет конкретное место по названию рядом с точкой — для сопоставления трат
+     * с реальными магазинами («Пятёрочка» из банковского уведомления → ближайшая
+     * Пятёрочка на карте).
+     *
+     * Возвращает ближайшее место, в названии которого действительно есть искомое.
+     * Если такого нет — null, а не «что-то похожее рядом»: неверно привязать трату
+     * к чужому магазину хуже, чем не привязать вовсе.
+     */
+    suspend fun searchByName(
+        userPoint: Point,
+        name: String,
+        radiusMeters: Float = 3000f
+    ): PlacePoint? {
+        // Категория здесь служебная: runQuery требует её для типа поиска (организации),
+        // в результат сопоставления она не попадает.
+        val results = runQuery(userPoint, NeedCategory.GROCERY, name, radiusMeters)
+        val needle = name.lowercase().replace("ё", "е")
+        return results
+            .filter { it.name.lowercase().replace("ё", "е").contains(needle) }
+            .minByOrNull { it.distanceKm }
+    }
+
     private suspend fun runQuery(
         userPoint: Point,
         category: NeedCategory,

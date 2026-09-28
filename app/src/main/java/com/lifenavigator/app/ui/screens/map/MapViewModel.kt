@@ -147,6 +147,9 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
      * и при каждом нажатии на кнопку "моя геолокация").
      */
     fun loadRealPlacesNear(userPoint: Point) {
+        // Запоминаем точку для бюджета: он ищет магазины из трат рядом с ней.
+        settings.lastUserLatitude = userPoint.latitude
+        settings.lastUserLongitude = userPoint.longitude
         viewModelScope.launch {
             _uiState.update { it.copy(isRefreshingRealData = true, userPoint = userPoint) }
             val radius = _uiState.value.searchRadiusMeters

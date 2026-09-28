@@ -15,6 +15,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -93,6 +94,7 @@ fun BudgetScreen(viewModel: BudgetViewModel = viewModel()) {
             }
 
             item { MonthSwitcher(state, viewModel) }
+            item { WhereYouSpendSection(state) }
             item { IncomeCard(state) { incomeDialogOpen = true } }
             item { SummaryCard(state) }
             item { PayButton { paymentStubOpen = true } }
@@ -734,4 +736,115 @@ private fun PendingExpenseCard(
             }
         }
     }
+}
+
+/**
+ * «Где вы тратите» — главный блок экрана.
+ *
+ * Показывает, в каких местах уходят деньги, и что ещё есть рядом той же категории.
+ * Намеренно без слов «дешевле» и «выгоднее»: цен у нас нет, и советовать магазин
+ * как более дешёвый было бы выдумкой. Показываем факты — сумму, долю, адрес, соседей.
+ */
+@Composable
+private fun WhereYouSpendSection(state: BudgetUiState) {
+    val context = LocalContext.current
+
+    Column(Modifier.fillMaxWidth()) {
+        Text(
+            "Где вы тратите",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 8.dp)
+        )
+
+        if (state.placeSpending.isEmpty()) {
+            Card(Modifier.fillMaxWidth()) {
+                Text(
+                    "Пока пусто. Траты с названием магазина появятся здесь сами — из уведомлений " +
+                        "и SMS банка, импорта выписки или ручного ввода с комментарием.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(12.dp)
+                )
+            }
+            return@Column
+        }
+
+        if (!state.hasLocation) {
+            Text(
+                "Чтобы привязать траты к местам на карте, один раз определите местоположение " +
+                    "на вкладке «Карта».",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
+            )
+        }
+
+        state.placeSpending.forEach { item ->
+            Card(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp)
+            ) {
+                Column(Modifier.padding(12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            item.merchant,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            item.totalRub.asRub(),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Text(
+                        "${item.sharePercent}% трат месяца · покупок: ${item.visits}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    item.place?.let { place ->
+                        Spacer(Modifier.height(6.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "📍 ${place.address.ifBlank { place.name }}",
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.weight(1f)
+                            )
+                            TextButton(onClick = { openOnMap(context, place.latitude, place.longitude) }) {
+                                Text("На карте")
+                            }
+                        }
+                    }
+
+                    if (item.alternatives.isNotEmpty()) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "Рядом также: " + item.alternatives.joinToString(", ") {
+                                "${it.name} (${it.distanceKm} км)"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Открывает точку в Яндекс Картах, а если их нет — в браузере. */
+private fun openOnMap(context: android.content.Context, lat: Double, lon: Double) {
+    val app = android.content.Intent(
+        android.content.Intent.ACTION_VIEW,
+        android.net.Uri.parse("yandexmaps://maps.yandex.ru/?pt=$lon,$lat&z=17&l=map")
+    )
+    val web = android.content.Intent(
+        android.content.Intent.ACTION_VIEW,
+        android.net.Uri.parse("https://yandex.ru/maps/?pt=$lon,$lat&z=17&l=map")
+    )
+    runCatching { context.startActivity(app) }.onFailure { runCatching { context.startActivity(web) } }
 }

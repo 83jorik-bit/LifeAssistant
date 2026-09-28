@@ -694,12 +694,10 @@ private fun YandexMapView(
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_START -> {
-                    MapKitFactory.getInstance().onStart()
                     mapView.value?.onStart()
                 }
                 Lifecycle.Event.ON_STOP -> {
                     mapView.value?.onStop()
-                    MapKitFactory.getInstance().onStop()
                 }
                 else -> Unit
             }
@@ -709,7 +707,6 @@ private fun YandexMapView(
         // Если экран открылся, когда приложение уже в состоянии STARTED,
         // событие ON_START не придёт — запускаем вручную.
         if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
-            MapKitFactory.getInstance().onStart()
             mapView.value?.onStart()
         }
 
@@ -717,7 +714,6 @@ private fun YandexMapView(
             lifecycleOwner.lifecycle.removeObserver(observer)
             if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
                 mapView.value?.onStop()
-                MapKitFactory.getInstance().onStop()
             }
         }
     }

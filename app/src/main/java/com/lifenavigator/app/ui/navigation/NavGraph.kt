@@ -14,9 +14,14 @@ sealed class Destination(val route: String, val label: String, val icon: ImageVe
     data object AssistantScreen : Destination("assistant", "Помощник", Icons.Filled.Chat)
 }
 
+/**
+ * Бюджет — первая вкладка: приложение стало «бюджетом, который знает, где вы тратите».
+ * Карта осталась, но как инструмент — найти место или проложить маршрут, —
+ * а не как главный экран, дублирующий Яндекс Карты.
+ */
 val bottomNavItems = listOf(
-    Destination.MapScreen,
     Destination.BudgetScreen,
+    Destination.MapScreen,
     Destination.SubscriptionsScreen,
     Destination.AssistantScreen
 )
