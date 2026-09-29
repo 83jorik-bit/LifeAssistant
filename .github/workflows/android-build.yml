@@ -12,7 +12,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout
@@ -49,5 +49,7 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
+          # Debug-APK нужен только чтобы скачать и поставить. По умолчанию GitHub хранит артефакты 90 дней, и десятки APK с MapKit переполняли бесплатные 500 МБ — сборки переставали запускаться.
+          retention-days: 3
           name: app-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
