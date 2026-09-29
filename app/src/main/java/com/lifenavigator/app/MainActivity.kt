@@ -2,6 +2,7 @@ package com.lifenavigator.app
 
 import android.content.Intent
 import android.os.Bundle
+import com.yandex.mapkit.MapKitFactory
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -48,6 +49,23 @@ class MainActivity : ComponentActivity() {
         if (data.scheme == "lifenavigator" || data.scheme?.startsWith("vk") == true) {
             PkceOAuthClient.redirect.value = data
         }
+    }
+
+    /**
+     * Жизненный цикл MapKit ведётся на уровне активности, как советует документация
+     * Яндекса. Раньше его запускал и останавливал экран карты — и при уходе с вкладки
+     * карты MapKit останавливался целиком. Пока карта была главным экраном, это не
+     * мешало, но теперь поиском пользуется и бюджет (сопоставление трат с магазинами),
+     * а он живёт на другой вкладке и с остановленным MapKit просто не получал бы ответ.
+     */
+    override fun onStart() {
+        super.onStart()
+        MapKitFactory.getInstance().onStart()
+    }
+
+    override fun onStop() {
+        MapKitFactory.getInstance().onStop()
+        super.onStop()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -102,7 +120,7 @@ fun LifeNavigatorApp() {
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = Destination.MapScreen.route,
+            startDestination = Destination.BudgetScreen.route,
             modifier = Modifier.padding(innerPadding)
         ) {
             composable(Destination.MapScreen.route) { MapScreen() }

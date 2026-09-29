@@ -15,6 +15,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -24,6 +25,8 @@ import com.lifenavigator.app.data.model.BudgetLine
 import com.lifenavigator.app.data.local.PendingExpense
 import com.lifenavigator.app.data.model.Expense
 import com.lifenavigator.app.data.model.NeedCategory
+import com.lifenavigator.app.data.money.ExpenseRecorder
+import com.lifenavigator.app.data.notifications.PaymentIntake
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
@@ -74,18 +77,24 @@ fun BudgetScreen(viewModel: BudgetViewModel = viewModel()) {
                     PendingExpenseCard(
                         item = item,
                         title = item.suggestedCategoryKey?.let { state.titleOf(it) },
-                        onConfirm = {
+                        onConfirmPurchase = {
                             viewModel.confirmPending(
                                 item,
-                                item.suggestedCategoryKey ?: NeedCategory.GROCERY.name
+                                when {
+                                    item.kind == "SUBSCRIPTION" -> PaymentIntake.SUBSCRIPTIONS_KEY
+                                    item.suggestedCategoryKey != null -> item.suggestedCategoryKey
+                                    else -> ExpenseRecorder.UNCATEGORIZED_KEY
+                                }
                             )
                         },
+                        onTransferToPerson = { viewModel.confirmPending(item, PaymentIntake.TRANSFERS_KEY) },
                         onDismiss = { viewModel.dismissPending(item.id) }
                     )
                 }
             }
 
             item { MonthSwitcher(state, viewModel) }
+            item { WhereYouSpendSection(state) }
             item { IncomeCard(state) { incomeDialogOpen = true } }
             item { SummaryCard(state) }
             item { PayButton { paymentStubOpen = true } }
@@ -644,15 +653,18 @@ private fun PaymentStubDialog(onDismiss: () -> Unit) {
 }
 
 /**
- * Трата, распознанная из банковского уведомления. Показывается до подтверждения,
- * потому что разбор чужих уведомлений неточен — человек видит сумму и магазин
- * и решает сам.
+ * Операция из банковского уведомления или SMS, ждущая решения пользователя.
+ *
+ * Для перевода задаётся вопрос: по тексту уведомления нельзя отличить оплату услуги
+ * (мастеру, репетитору) от денег родственнику или перевода между своими счетами.
+ * Три ответа ведут в три разных места бюджета — угадывать здесь нельзя.
  */
 @Composable
 private fun PendingExpenseCard(
     item: PendingExpense,
     title: String?,
-    onConfirm: () -> Unit,
+    onConfirmPurchase: () -> Unit,
+    onTransferToPerson: () -> Unit,
     onDismiss: () -> Unit
 ) {
     Card(
@@ -660,28 +672,179 @@ private fun PendingExpenseCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
     ) {
         Column(Modifier.padding(12.dp)) {
-            Text(
-                item.amountRub.asRub(),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-            item.merchant?.let {
-                Text(it, style = MaterialTheme.typography.bodyMedium)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    item.amountRub.asRub(),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    buildString {
+                        append(if (item.source == "SMS") "SMS" else "уведомление")
+                        item.cardTail?.let { append(" · карта *$it") }
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
-            Text(
-                title?.let { "Предложена категория: $it" } ?: "Категория не определена",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+
+            when {
+                item.isTransfer -> Text("Перевод", style = MaterialTheme.typography.bodyMedium)
+                item.subscriptionService != null ->
+                    Text("Подписка: ${item.subscriptionService}", style = MaterialTheme.typography.bodyMedium)
+                else -> item.merchant?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+            }
+
             Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onConfirm, modifier = Modifier.weight(1f)) {
-                    Text("Добавить")
+
+            if (item.isTransfer) {
+                Text(
+                    "Что это за перевод?",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(Modifier.height(6.dp))
+                Button(onClick = onConfirmPurchase, modifier = Modifier.fillMaxWidth()) {
+                    Text("Оплата товаров или услуг")
                 }
-                OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
-                    Text("Не трата")
+                OutlinedButton(onClick = onTransferToPerson, modifier = Modifier.fillMaxWidth()) {
+                    Text("Перевод человеку")
+                }
+                TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
+                    Text("Между своими счетами — не трата")
+                }
+            } else {
+                Text(
+                    when {
+                        item.subscriptionService != null -> "Попадёт в строку «Подписки»"
+                        title != null -> "Предложена категория: $title"
+                        else -> "Категория не определена — попадёт в «Без категории»"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = onConfirmPurchase, modifier = Modifier.weight(1f)) {
+                        Text("Добавить")
+                    }
+                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
+                        Text("Не трата")
+                    }
                 }
             }
         }
     }
+}
+
+/**
+ * «Где вы тратите» — главный блок экрана.
+ *
+ * Показывает, в каких местах уходят деньги, и что ещё есть рядом той же категории.
+ * Намеренно без слов «дешевле» и «выгоднее»: цен у нас нет, и советовать магазин
+ * как более дешёвый было бы выдумкой. Показываем факты — сумму, долю, адрес, соседей.
+ */
+@Composable
+private fun WhereYouSpendSection(state: BudgetUiState) {
+    val context = LocalContext.current
+
+    Column(Modifier.fillMaxWidth()) {
+        Text(
+            "Где вы тратите",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 8.dp)
+        )
+
+        if (state.placeSpending.isEmpty()) {
+            Card(Modifier.fillMaxWidth()) {
+                Text(
+                    "Пока пусто. Траты с названием магазина появятся здесь сами — из уведомлений " +
+                        "и SMS банка, импорта выписки или ручного ввода с комментарием.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(12.dp)
+                )
+            }
+            return@Column
+        }
+
+        if (!state.hasLocation) {
+            Text(
+                "Чтобы привязать траты к местам на карте, один раз определите местоположение " +
+                    "на вкладке «Карта».",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
+            )
+        }
+
+        state.placeSpending.forEach { item ->
+            Card(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp)
+            ) {
+                Column(Modifier.padding(12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            item.merchant,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            item.totalRub.asRub(),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Text(
+                        "${item.sharePercent}% трат месяца · покупок: ${item.visits}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    item.place?.let { place ->
+                        Spacer(Modifier.height(6.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "📍 ${place.address.ifBlank { place.name }}",
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.weight(1f)
+                            )
+                            TextButton(onClick = { openOnMap(context, place.latitude, place.longitude) }) {
+                                Text("На карте")
+                            }
+                        }
+                    }
+
+                    if (item.alternatives.isNotEmpty()) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "Рядом также: " + item.alternatives.joinToString(", ") {
+                                "${it.name} (${it.distanceKm} км)"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Открывает точку в Яндекс Картах, а если их нет — в браузере. */
+private fun openOnMap(context: android.content.Context, lat: Double, lon: Double) {
+    val app = android.content.Intent(
+        android.content.Intent.ACTION_VIEW,
+        android.net.Uri.parse("yandexmaps://maps.yandex.ru/?pt=$lon,$lat&z=17&l=map")
+    )
+    val web = android.content.Intent(
+        android.content.Intent.ACTION_VIEW,
+        android.net.Uri.parse("https://yandex.ru/maps/?pt=$lon,$lat&z=17&l=map")
+    )
+    runCatching { context.startActivity(app) }.onFailure { runCatching { context.startActivity(web) } }
 }

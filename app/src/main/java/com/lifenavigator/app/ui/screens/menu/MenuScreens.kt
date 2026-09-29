@@ -37,7 +37,7 @@ import com.lifenavigator.app.data.local.BudgetStorage
 import com.lifenavigator.app.data.local.ConsentStore
 import com.lifenavigator.app.data.local.ConsentText
 import com.lifenavigator.app.data.local.LocalProfileStore
-import com.lifenavigator.app.data.local.StatementImporter
+import com.lifenavigator.app.data.money.StatementImporter
 import com.lifenavigator.app.data.notifications.BankNotificationListener
 import com.lifenavigator.app.data.local.SessionStore
 import com.lifenavigator.app.data.local.ThemeController
@@ -408,8 +408,9 @@ fun SettingsSheet(
             ) { uri ->
                 if (uri != null) {
                     val result = StatementImporter.import(context, uri)
-                    importResult = "Добавлено трат: ${result.imported}. " +
-                        "Пропущено строк: ${result.skipped}."
+                    importResult = "Добавлено трат: ${result.added}. " +
+                        "Пропущено (поступления и дубли): ${result.skipped}. " +
+                        "Не разобрано строк: ${result.failed}."
                 }
             }
 
@@ -473,6 +474,44 @@ fun SettingsSheet(
                 }
             }
 
+            // --- SMS ---
+            var smsEnabled by remember { mutableStateOf(AppSettings(context).bankSmsEnabled) }
+            val smsPermissionLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.RequestPermission()
+            ) { granted ->
+                // Настройка включается, только если пользователь реально дал разрешение —
+                // переключатель не должен показывать «включено», когда система отказала.
+                AppSettings(context).bankSmsEnabled = granted
+                smsEnabled = granted
+            }
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Читать SMS банков", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        "Только новые входящие SMS от банков о списаниях. Архив переписки " +
+                            "не читается, сообщения не от банков отбрасываются сразу.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = smsEnabled,
+                    onCheckedChange = { checked ->
+                        if (checked) {
+                            smsPermissionLauncher.launch(Manifest.permission.RECEIVE_SMS)
+                        } else {
+                            AppSettings(context).bankSmsEnabled = false
+                            smsEnabled = false
+                        }
+                    }
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -482,7 +521,8 @@ fun SettingsSheet(
                     Text("Добавлять без подтверждения", style = MaterialTheme.typography.bodyMedium)
                     Text(
                         "Выключено — распознанные траты ждут подтверждения во вкладке «Бюджет». " +
-                            "Разбор уведомлений неточен, поэтому проверять стоит.",
+                            "Переводы спрашиваются всегда: по тексту нельзя понять, оплата это " +
+                            "или деньги близким.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

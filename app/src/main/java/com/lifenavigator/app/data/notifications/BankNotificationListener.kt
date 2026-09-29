@@ -7,11 +7,6 @@ import android.provider.Settings
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import com.lifenavigator.app.data.local.AppSettings
-import com.lifenavigator.app.data.local.BudgetStorage
-import com.lifenavigator.app.data.local.PendingExpenseStore
-import com.lifenavigator.app.data.model.Expense
-import java.time.LocalDate
-import java.util.UUID
 
 /**
  * Читает уведомления банковских приложений и превращает их в траты.
@@ -39,32 +34,10 @@ class BankNotificationListener : NotificationListenerService() {
         val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
 
         val payment = BankNotificationParser.parse(sbn.packageName, title, text) ?: return
-
-        if (settings.bankNotificationsAutoAdd) {
-            // Автоматический режим: пишем сразу в бюджет. Категория — подсказанная
-            // разбором, иначе трата уйдёт в «без категории» и человек разберёт её позже.
-            val storage = BudgetStorage(applicationContext)
-            val expense = Expense(
-                id = UUID.randomUUID().toString(),
-                categoryKey = payment.suggestedCategory?.name ?: UNCATEGORIZED_KEY,
-                amountRub = payment.amountRub,
-                note = payment.merchant,
-                dateEpochDay = LocalDate.now().toEpochDay()
-            )
-            storage.saveExpenses(storage.loadExpenses() + expense)
-        } else {
-            PendingExpenseStore(applicationContext).add(
-                amountRub = payment.amountRub,
-                merchant = payment.merchant,
-                category = payment.suggestedCategory
-            )
-        }
+        PaymentIntake.accept(applicationContext, payment, source = "PUSH")
     }
 
     companion object {
-        /** Ключ категории для трат, которым разбор не смог подобрать категорию. */
-        const val UNCATEGORIZED_KEY = "custom:uncategorized"
-
         /**
          * Выдано ли разрешение на чтение уведомлений. Проверяется по системному
          * списку включённых слушателей — отдельного API «спросить разрешение» тут нет.

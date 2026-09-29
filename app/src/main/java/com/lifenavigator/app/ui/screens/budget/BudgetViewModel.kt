@@ -2,6 +2,14 @@ package com.lifenavigator.app.ui.screens.budget
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.lifenavigator.app.data.local.PlacesCache
+import com.lifenavigator.app.data.model.PlacePoint
+import com.lifenavigator.app.data.money.MatchedPlace
+import com.lifenavigator.app.data.money.MerchantNormalizer
+import com.lifenavigator.app.data.money.PlaceMatcher
+import com.yandex.mapkit.geometry.Point
+import kotlinx.coroutines.launch
 import com.lifenavigator.app.data.local.AppSettings
 import com.lifenavigator.app.data.local.BudgetNotifier
 import com.lifenavigator.app.data.local.BudgetStorage
@@ -11,6 +19,8 @@ import com.lifenavigator.app.data.model.BudgetLine
 import com.lifenavigator.app.data.model.CustomCategory
 import com.lifenavigator.app.data.model.Expense
 import com.lifenavigator.app.data.model.NeedCategory
+import com.lifenavigator.app.data.money.ExpenseRecorder
+import com.lifenavigator.app.data.notifications.PaymentIntake
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -22,6 +32,26 @@ import java.util.UUID
 private const val CUSTOM_COLOR = 0xFF5D6D7E
 private const val CUSTOM_EMOJI = "🏷"
 
+/**
+ * Одно место в блоке «где вы тратите»: сеть или магазин, собранный из трат месяца.
+ */
+data class PlaceSpending(
+    /** Нормализованное название: «Пятёрочка», а не «PYATEROCHKA 5432». */
+    val merchant: String,
+    val totalRub: Int,
+    val visits: Int,
+    /** Доля от всех трат месяца, в процентах. */
+    val sharePercent: Int,
+    /** Реальное место на карте, если удалось сопоставить. */
+    val place: MatchedPlace?,
+    /**
+     * Другие места той же категории рядом — из последнего поиска на карте.
+     * Именно «другие рядом», а не «дешевле»: цен у нас нет, и утверждать,
+     * что где-то дешевле, было бы выдумкой.
+     */
+    val alternatives: List<PlacePoint>
+)
+
 data class BudgetUiState(
     val month: YearMonth = YearMonth.now(),
     /** Доход по месяцам: ключ — "2026-09". */
@@ -31,7 +61,11 @@ data class BudgetUiState(
     val customCategories: List<CustomCategory> = emptyList(),
     val allExpenses: List<Expense> = emptyList(),
     /** Траты, распознанные из банковских уведомлений и ждущие подтверждения. */
-    val pending: List<PendingExpense> = emptyList()
+    val pending: List<PendingExpense> = emptyList(),
+    /** Блок «где вы тратите» — главная часть экрана. */
+    val placeSpending: List<PlaceSpending> = emptyList(),
+    /** Известна ли точка пользователя: без неё сопоставлять магазины не с чем. */
+    val hasLocation: Boolean = false
 ) {
     val income: Int get() = incomeByMonth[month.toString()] ?: 0
 
@@ -75,6 +109,14 @@ data class BudgetUiState(
         NeedCategory.entries.firstOrNull { it.name == key }?.let {
             return CategoryInfo(it.displayName, it.emoji, it.colorArgb)
         }
+        // Служебные строки бюджета, которые создают автоматические источники.
+        // «Переводы» — отдельной статьёй, как просили: это не покупки, и смешивать
+        // деньги, отправленные близким, с тратами на продукты значит искажать бюджет.
+        when (key) {
+            PaymentIntake.TRANSFERS_KEY -> return CategoryInfo("Переводы", "↗️", 0xFF6A5ACD)
+            PaymentIntake.SUBSCRIPTIONS_KEY -> return CategoryInfo("Подписки", "🔁", 0xFFD81B60)
+            ExpenseRecorder.UNCATEGORIZED_KEY -> return CategoryInfo("Без категории", CUSTOM_EMOJI, CUSTOM_COLOR)
+        }
         val custom = customCategories.firstOrNull { it.key == key }
         return CategoryInfo(custom?.title ?: "Без категории", CUSTOM_EMOJI, CUSTOM_COLOR)
     }
@@ -106,12 +148,15 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
 
     private val storage = BudgetStorage(application)
     private val pendingStore = PendingExpenseStore(application)
+    private val placesCache = PlacesCache(application)
+    private val settings = AppSettings(application)
 
     private val _uiState = MutableStateFlow(BudgetUiState())
     val uiState: StateFlow<BudgetUiState> = _uiState
 
     init {
         reload()
+        refreshPlaceSpending()
     }
 
     private fun reload() {
@@ -159,6 +204,7 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
         storage.saveExpenses(updated)
         _uiState.update { it.copy(allExpenses = updated) }
         maybeNotifyOverLimit(categoryKey, amountRub, date)
+        refreshPlaceSpending()
     }
 
     /**
@@ -205,15 +251,74 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
         val updated = _uiState.value.allExpenses.filterNot { it.id == id }
         storage.saveExpenses(updated)
         _uiState.update { it.copy(allExpenses = updated) }
+        refreshPlaceSpending()
+    }
+
+    /**
+     * Пересчитывает блок «где вы тратите» и, если известна точка пользователя,
+     * сопоставляет крупнейшие магазины с реальными местами.
+     *
+     * Переводы и подписки сюда не входят: у них нет места на карте.
+     */
+    fun refreshPlaceSpending() {
+        val state = _uiState.value
+        val placeExpenses = state.expensesOfMonth.filter {
+            it.categoryKey != PaymentIntake.TRANSFERS_KEY &&
+                it.categoryKey != PaymentIntake.SUBSCRIPTIONS_KEY
+        }
+        val monthTotal = state.totalSpent.coerceAtLeast(1)
+
+        // Группируем по нормализованному названию, а для каждой группы запоминаем
+        // самую частую категорию — по ней подбираем «другие места рядом».
+        val groups = placeExpenses
+            .mapNotNull { expense -> MerchantNormalizer.normalize(expense.note)?.let { it to expense } }
+            .groupBy({ it.first }, { it.second })
+
+        val lat = settings.lastUserLatitude
+        val lon = settings.lastUserLongitude
+        val hasLocation = !lat.isNaN() && !lon.isNaN()
+        val matches = PlaceMatcher.cached(getApplication())
+        val nearby = placesCache.load()
+
+        val spending = groups.map { (merchant, expenses) ->
+            val total = expenses.sumOf { it.amountRub }
+            val categoryKey = expenses.groupingBy { it.categoryKey }.eachCount().maxByOrNull { it.value }?.key
+            PlaceSpending(
+                merchant = merchant,
+                totalRub = total,
+                visits = expenses.size,
+                sharePercent = (total * 100 / monthTotal),
+                place = matches[merchant],
+                alternatives = nearby
+                    .filter { it.category.name == categoryKey && MerchantNormalizer.normalize(it.name) != merchant }
+                    .sortedBy { it.distanceKm }
+                    .take(2)
+            )
+        }.sortedByDescending { it.totalRub }.take(8)
+
+        _uiState.update { it.copy(placeSpending = spending, hasLocation = hasLocation) }
+
+        // Сопоставляем только то, чего ещё нет в кэше, и только если есть точка.
+        if (!hasLocation) return
+        val missing = spending.filter { it.place == null }.map { it.merchant }
+        if (missing.isEmpty()) return
+        viewModelScope.launch {
+            val updated = PlaceMatcher.matchMissing(getApplication(), missing, Point(lat, lon))
+            _uiState.update { current ->
+                current.copy(placeSpending = current.placeSpending.map { it.copy(place = updated[it.merchant]) })
+            }
+        }
     }
 
     fun showPreviousMonth() {
         _uiState.update { it.copy(month = it.month.minusMonths(1)) }
+        refreshPlaceSpending()
     }
 
     fun showNextMonth() {
         _uiState.update {
             if (it.month < YearMonth.now()) it.copy(month = it.month.plusMonths(1)) else it
         }
+        refreshPlaceSpending()
     }
 }
