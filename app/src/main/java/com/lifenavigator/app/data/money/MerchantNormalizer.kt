@@ -55,16 +55,14 @@ object MerchantNormalizer {
      * (например, одни цифры терминала).
      */
     fun normalize(raw: String?): String? {
-        // Явный val non-null: после isNullOrBlank некоторые версии Kotlin не делают
-        // smart cast на var-параметре, поэтому берём значение в отдельную переменную.
-        val input: String = if (raw.isNullOrBlank()) return null else raw
+        if (raw.isNullOrBlank()) return null
 
-        var lower = " " + input.lowercase() + " "
+        var lower = " " + raw.lowercase() + " "
         CITY_TRAPS.forEach { city -> lower = lower.replace(city, " ") }
 
         CHAINS.firstOrNull { (keys, _) -> keys.any { it in lower } }?.let { return it.second }
 
-        var cleaned: String = input
+        var cleaned = raw
         CITY_TRAPS.forEach { city -> cleaned = cleaned.replace(city, " ", ignoreCase = true) }
         cleaned = cleaned
             .replace(LEGAL_FORMS, " ")
