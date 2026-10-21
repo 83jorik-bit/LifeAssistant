@@ -69,6 +69,14 @@ class AppSettings(context: Context) {
         get() = prefs.getString(KEY_LAST_LON, null)?.toDoubleOrNull() ?: Double.NaN
         set(value) = prefs.edit().putString(KEY_LAST_LON, value.toString()).apply()
 
+    /**
+     * Режим диагностики: в журнал попадают и имена небанковских приложений —
+     * чтобы найти свой банк, если его нет в списке. Только имена, без текста.
+     */
+    var captureDiagnostics: Boolean
+        get() = prefs.getBoolean(KEY_DIAGNOSTICS, false)
+        set(value) = prefs.edit().putBoolean(KEY_DIAGNOSTICS, value).apply()
+
     /** Читать банковские SMS и превращать их в траты. */
     var bankSmsEnabled: Boolean
         get() = prefs.getBoolean(KEY_BANK_SMS, false)
@@ -105,6 +113,7 @@ class AppSettings(context: Context) {
         private const val KEY_BUDGET_ALERTS = "budget_alerts_enabled"
         private const val KEY_BANK_NOTIFICATIONS = "bank_notifications_enabled"
         private const val KEY_BANK_SMS = "bank_sms_enabled"
+        private const val KEY_DIAGNOSTICS = "capture_diagnostics"
         private const val KEY_LAST_LAT = "last_user_lat"
         private const val KEY_LAST_LON = "last_user_lon"
         private const val KEY_BANK_AUTO_ADD = "bank_notifications_auto_add"
@@ -149,6 +158,7 @@ object UserDataEraser {
         SessionStore.clear(context)
         PlacesCache(context).clear()
         PendingExpenseStore(context).clear()
+        com.lifenavigator.app.data.notifications.CaptureLog.clear(context)
         com.lifenavigator.app.data.money.PlaceMatcher.clear(context)
         BudgetStorage(context).clearAll()
         // Настройки (радиус, темы, выбранные категории) — это предпочтения показа,

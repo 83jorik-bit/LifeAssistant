@@ -42,6 +42,22 @@ private val DAY_FORMAT = DateTimeFormatter.ofPattern("d MMMM", Locale("ru"))
 fun BudgetScreen(viewModel: BudgetViewModel = viewModel()) {
     val state by viewModel.uiState.collectAsState()
 
+    // Траты из уведомлений и SMS записывает фоновый сервис в обход ViewModel.
+    // Два источника обновления: сигнал о новой операции (пока приложение открыто)
+    // и возврат в приложение (если операция пришла, пока оно было свёрнуто).
+    val captureUpdates by PaymentIntake.updates.collectAsState()
+    LaunchedEffect(captureUpdates) {
+        if (captureUpdates > 0) viewModel.reloadFromStorage()
+    }
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) viewModel.reloadFromStorage()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     var expenseDialogOpen by remember { mutableStateOf(false) }
     var limitDialogKey by remember { mutableStateOf<String?>(null) }
     var incomeDialogOpen by remember { mutableStateOf(false) }

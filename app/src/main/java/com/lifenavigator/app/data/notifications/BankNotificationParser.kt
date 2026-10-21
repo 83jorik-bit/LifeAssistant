@@ -90,8 +90,14 @@ object BankNotificationParser {
     /** Признаки покупки/списания. */
     private val DEBIT_WORDS = listOf("покупка", "оплата", "списание", "снятие", "платёж", "платеж")
 
+    /**
+     * Сумма с валютой. Проверено на реальных форматах банков:
+     * Сбербанк пишет «350р» без точки, Альфа-Банк — «350,00 RUR», Т-Банк и ВТБ — «RUB».
+     * Первая версия требовала «р.» с точкой и не распознавала ни одного SMS Сбербанка.
+     * «р» засчитывается, только если за ней не идёт буква, — иначе «5 раз» стало бы суммой.
+     */
     private val AMOUNT_REGEX = Regex(
-        """(\d{1,3}(?:[ \u00A0]\d{3})*(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?)\s*(?:₽|руб\.?|р\.|RUB)""",
+        """(\d{1,3}(?:[ \u00A0]\d{3})*(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?)\s*(?:₽|руб\.?|р\.?(?![а-яёa-z])|RUB|RUR)""",
         RegexOption.IGNORE_CASE
     )
 
@@ -216,15 +222,22 @@ object BankNotificationParser {
     private fun extractMerchant(text: String): String? {
         val match = AMOUNT_REGEX.find(text) ?: return null
         val tail = text.substring(match.range.last + 1)
+            // Номер карты ВЫРЕЗАЕМ, а не обрезаем по нему: у ВТБ магазин стоит после
+            // карты («350.00 RUB карта *1234 PYATEROCHKA»), и обрезка его теряла.
+            .replace(CARD_REGEX, " ")
+            .replace(CARD_WORD, " ")
+            // У Т-Банка сразу после суммы идёт точка («350 RUB. PYATEROCHKA.»),
+            // и без этого текст обрезался до пустой строки.
+            .trimStart(' ', '.', ',', ';')
             .substringBefore(". ")
             .substringBefore("Баланс")
             .substringBefore("Доступно")
-            .substringBefore("Карта")
-            .substringBefore("карта")
-            .replace(CARD_REGEX, "")
+            .replace(Regex("""\s+"""), " ")
             .trim(' ', ',', '.', ';', '·', '-')
         return tail.takeIf { it.isNotBlank() && it.length in 2..40 }
     }
+
+    private val CARD_WORD = Regex("""(?<![а-яё])карт[аеуы]?(?![а-яё])""", RegexOption.IGNORE_CASE)
 
     private fun guessCategory(text: String): NeedCategory? {
         val lower = text.lowercase()

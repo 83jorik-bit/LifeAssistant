@@ -21,19 +21,29 @@ class BankSmsReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Telephony.Sms.Intents.SMS_RECEIVED_ACTION) return
-        if (!AppSettings(context).bankSmsEnabled) return
+        if (!AppSettings(context).bankSmsEnabled) {
+            CaptureLog.add(context, "SMS", "—", "чтение SMS выключено в настройках")
+            return
+        }
 
         val messages = Telephony.Sms.Intents.getMessagesFromIntent(intent) ?: return
         if (messages.isEmpty()) return
 
         val sender = messages.first().originatingAddress
-        if (!BankNotificationParser.isBankSmsSender(sender)) return
+        if (!BankNotificationParser.isBankSmsSender(sender)) {
+            if (AppSettings(context).captureDiagnostics) {
+                CaptureLog.add(context, "SMS", sender ?: "?", "отправитель не в списке банков")
+            }
+            return
+        }
 
         // Длинное SMS приходит частями — склеиваем, иначе сумма и магазин
         // могут оказаться в разных частях и разбор их не найдёт.
         val body = messages.joinToString("") { it.messageBody.orEmpty() }
 
-        val payment = BankNotificationParser.parseSms(sender, body) ?: return
+        val payment = BankNotificationParser.parseSms(sender, body)
+        CaptureLog.add(context, "SMS", sender ?: "?", CaptureLog.verdictOf(payment))
+        payment ?: return
         PaymentIntake.accept(context, payment, source = "SMS")
     }
 }

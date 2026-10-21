@@ -537,6 +537,103 @@ fun SettingsSheet(
                 )
             }
 
+            // --- Диагностика сбора ---
+            Spacer(Modifier.height(16.dp))
+            Text("Проверка сбора операций", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(4.dp))
+
+            val smsGranted = androidx.core.content.ContextCompat.checkSelfPermission(
+                context, Manifest.permission.RECEIVE_SMS
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            Text(
+                buildString {
+                    append(if (hasNotificationAccess) "✅" else "❌")
+                    append(" доступ к уведомлениям выдан именно этому приложению\n")
+                    append(if (bankEnabled) "✅" else "❌")
+                    append(" чтение уведомлений банков включено\n")
+                    append(if (smsGranted) "✅" else "❌")
+                    append(" разрешение на SMS выдано\n")
+                    append(if (smsEnabled) "✅" else "❌")
+                    append(" чтение SMS банков включено")
+                },
+                style = MaterialTheme.typography.bodySmall
+            )
+
+            // Проверка разбора: вставить текст уведомления и сразу увидеть результат,
+            // не дожидаясь настоящей покупки.
+            Spacer(Modifier.height(10.dp))
+            var testText by remember { mutableStateOf("") }
+            OutlinedTextField(
+                value = testText,
+                onValueChange = { testText = it },
+                label = { Text("Вставьте текст уведомления или SMS банка") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            if (testText.isNotBlank()) {
+                // Разбираем «как SMS Сбербанка»: проверяется сам текст, фильтр отправителя
+                // здесь не нужен.
+                val parsed = com.lifenavigator.app.data.notifications.BankNotificationParser
+                    .parseSms("900", testText)
+                Text(
+                    "Результат: " + com.lifenavigator.app.data.notifications.CaptureLog.verdictOf(parsed),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (parsed != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                )
+            }
+
+            Spacer(Modifier.height(10.dp))
+            var diagnostics by remember { mutableStateOf(AppSettings(context).captureDiagnostics) }
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Режим диагностики", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        "Записывает в журнал и имена небанковских приложений — чтобы найти " +
+                            "свой банк, если его нет в списке. Только имена, без текста. " +
+                            "Включите на время поиска и выключите.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = diagnostics,
+                    onCheckedChange = { checked ->
+                        AppSettings(context).captureDiagnostics = checked
+                        diagnostics = checked
+                    }
+                )
+            }
+
+            Spacer(Modifier.height(8.dp))
+            var logEvents by remember {
+                mutableStateOf(com.lifenavigator.app.data.notifications.CaptureLog.load(context))
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Журнал (последние 20)", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                TextButton(onClick = {
+                    logEvents = com.lifenavigator.app.data.notifications.CaptureLog.load(context)
+                }) { Text("Обновить") }
+            }
+            if (logEvents.isEmpty()) {
+                Text(
+                    "Пусто: ни одного уведомления или SMS от банка ещё не пришло. Если вы " +
+                        "точно получали их после включения — сервис не получает уведомления, " +
+                        "см. пункты выше.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                logEvents.forEach { event ->
+                    Text(
+                        "${event.time} · ${event.source} · ${event.origin}\n   → ${event.verdict}",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+
             Spacer(Modifier.height(24.dp))
             Text("Синхронизация с сервером", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(4.dp))

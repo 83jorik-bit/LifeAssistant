@@ -242,6 +242,15 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
         _uiState.update { it.copy(pending = pendingStore.load()) }
     }
 
+    /**
+     * Перечитывает всё из хранилища. Траты из уведомлений пишет сервис в фоне,
+     * в обход ViewModel, — без этого экран показывал бы их только после перезапуска.
+     */
+    fun reloadFromStorage() {
+        reload()
+        refreshPlaceSpending()
+    }
+
     /** Перечитывает очередь: уведомления приходят, пока экран уже открыт. */
     fun refreshPending() {
         _uiState.update { it.copy(pending = pendingStore.load()) }

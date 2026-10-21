@@ -9,6 +9,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import com.lifenavigator.app.data.auth.PkceOAuthClient
+import com.lifenavigator.app.data.notifications.BankNotificationListener
 import com.lifenavigator.app.data.local.ConsentStore
 import com.lifenavigator.app.data.local.LocalProfileStore
 import com.lifenavigator.app.data.local.SessionStore
@@ -74,6 +75,9 @@ class MainActivity : ComponentActivity() {
         LocalProfileStore.load(this)
         ConsentStore.load(this)
         SessionStore.load(this)
+        // После обновления приложения Android иногда не подключает слушатель
+        // уведомлений заново — доступ выдан, а уведомления не приходят.
+        BankNotificationListener.requestRebindIfAllowed(this)
         handleAuthRedirect(intent)
         setContent {
             val themeMode by ThemeController.mode.collectAsState()

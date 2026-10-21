@@ -15,6 +15,18 @@ import java.time.LocalDate
  */
 object PaymentIntake {
 
+    /**
+     * Счётчик принятых операций. Сервис уведомлений и экран живут в одном процессе,
+     * поэтому экран бюджета подписывается на этот поток и обновляется сразу, как
+     * пришло уведомление, — без перезапуска приложения.
+     */
+    private val _updates = kotlinx.coroutines.flow.MutableStateFlow(0L)
+    val updates: kotlinx.coroutines.flow.StateFlow<Long> = _updates
+
+    private fun notifyUpdated() {
+        _updates.value = _updates.value + 1
+    }
+
     fun accept(context: Context, payment: ParsedPayment, source: String) {
         val settings = AppSettings(context)
 
@@ -33,6 +45,7 @@ object PaymentIntake {
                 subscriptionService = payment.subscriptionService,
                 source = source
             )
+            notifyUpdated()
             return
         }
 
@@ -47,6 +60,7 @@ object PaymentIntake {
                 else -> ExpenseRecorder.categoryKeyFor(payment.merchant)
             }
         )
+        notifyUpdated()
     }
 
     /** Ключ категории для списаний за подписки — отдельная строка бюджета. */
