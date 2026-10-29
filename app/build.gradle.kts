@@ -19,7 +19,6 @@ fun secret(name: String): String? =
         ?: System.getenv(name)?.takeIf { it.isNotBlank() }
 
 val mapkitApiKey = configValue("MAPKIT_API_KEY")
-val raspApiKey = configValue("RASP_API_KEY")
 val yandexClientId = configValue("YANDEX_CLIENT_ID")
 val vkClientId = configValue("VK_CLIENT_ID")
 val yandexRedirect = configValue("YANDEX_REDIRECT_URI")
