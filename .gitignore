@@ -33,3 +33,18 @@ captures/
 # macOS / Windows
 .DS_Store
 Thumbs.db
+
+# Additional secret and signing-material safeguards
+*.env
+.env
+.env.*
+!.env.example
+/release.keystore
+/release.keystore.*
+/keystore.txt
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+*.key
