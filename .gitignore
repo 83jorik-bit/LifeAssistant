@@ -1,12 +1,21 @@
-# Секреты — никогда не коммитить
+# Local configuration and all API credentials
 local.properties
+*.env
+.env
+.env.*
+!.env.example
 
-# Релизный ключ подписи и его base64. Утечка означает, что кто угодно
-# сможет выпустить обновление приложения от вашего имени.
-# (debug-ключ в папке keystore/ коммитится намеренно — он не секретный.)
+# Release signing material and encoded keystore files
 /release.keystore
-/release.keystore.base64.txt
+/release.keystore.*
+/keystore.txt
 *.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+*.key
+*.mobileprovision
 
 # Gradle
 .gradle/
@@ -21,5 +30,6 @@ captures/
 .externalNativeBuild/
 .cxx/
 
-# macOS
+# macOS / Windows
 .DS_Store
+Thumbs.db
