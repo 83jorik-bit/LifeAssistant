@@ -138,13 +138,6 @@ jobs:
             echo "ВНИМАНИЕ: сборка не подписана — проверьте секреты RELEASE_*."
           fi
 
-      - name: Remove temporary secrets from runner
-        if: always()
-        shell: bash
-        run: |
-          rm -f release.keystore private_key.pem local.properties
-          find . -maxdepth 3 -type f \( -name '*.pem' -o -name '*.p12' -o -name '*.pfx' \) -delete
-
       - name: Publish to RuStore
         if: ${{ inputs.publish }}
         env:
@@ -155,6 +148,13 @@ jobs:
           ARTIFACT_PATH: ${{ inputs.artifact_type == 'aab' && 'app/build/outputs/bundle/release/app-release.aab' || 'app/build/outputs/apk/release/app-release.apk' }}
           SEND_TO_MODERATION: ${{ inputs.send_to_moderation }}
         run: bash scripts/rustore-publish.sh
+
+      - name: Remove temporary secrets from runner
+        if: always()
+        shell: bash
+        run: |
+          rm -f release.keystore private_key.pem local.properties
+          find . -maxdepth 3 -type f \( -name '*.pem' -o -name '*.p12' -o -name '*.pfx' \) -delete
 
       - name: Upload artifacts for RuStore
         uses: actions/upload-artifact@v4
