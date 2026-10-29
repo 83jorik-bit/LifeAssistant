@@ -25,8 +25,8 @@ val yandexRedirect = configValue("YANDEX_REDIRECT_URI")
 val backendBaseUrl = configValue("BACKEND_BASE_URL")
 val yandexGptFolderId = configValue("YANDEX_GPT_FOLDER_ID")
 
-// API keys included in BuildConfig are extractable from the APK. Do not inject
-// YANDEX_GPT_API_KEY into the mobile app; cloud calls must go through a backend.
+// Credentials must never be embedded in BuildConfig: every value in an APK is extractable.
+// Rasp and YandexGPT production calls should use a server-side proxy, not a mobile API key.
 val releaseStoreFile = secret("RELEASE_STORE_FILE")
 val releaseStorePassword = secret("RELEASE_STORE_PASSWORD")
 val releaseKeyAlias = secret("RELEASE_KEY_ALIAS")
@@ -53,6 +53,8 @@ android {
         buildConfigField("String", "VK_CLIENT_ID", "\"$vkClientId\"")
         buildConfigField("String", "YANDEX_REDIRECT_URI", "\"$yandexRedirect\"")
         buildConfigField("String", "BACKEND_BASE_URL", "\"$backendBaseUrl\"")
+        buildConfigField("String", "YANDEX_GPT_FOLDER_ID", "\"$yandexGptFolderId\"")
+
         manifestPlaceholders["vkRedirectScheme"] =
             if (vkClientId.isNotBlank()) "vk$vkClientId" else "vk-not-configured"
     }
@@ -86,11 +88,15 @@ android {
         compose = true
         buildConfig = true
     }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions { jvmTarget = "17" }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
 }
 
 dependencies {
