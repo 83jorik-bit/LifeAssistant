@@ -1,11 +1,11 @@
-# Local configuration and all API credentials
+# Local configuration and credentials
 local.properties
 *.env
 .env
 .env.*
 !.env.example
 
-# Release signing material and encoded keystore files
+# Release signing material and encoded secrets
 /release.keystore
 /release.keystore.*
 /keystore.txt
@@ -30,21 +30,6 @@ captures/
 .externalNativeBuild/
 .cxx/
 
-# macOS / Windows
+# OS files
 .DS_Store
 Thumbs.db
-
-# Additional secret and signing-material safeguards
-*.env
-.env
-.env.*
-!.env.example
-/release.keystore
-/release.keystore.*
-/keystore.txt
-*.jks
-*.keystore
-*.p12
-*.pfx
-*.pem
-*.key
