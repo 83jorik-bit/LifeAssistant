@@ -43,13 +43,15 @@ object LocalAssistantEngine {
             value.toString().reversed().chunked(3).joinToString(" ").reversed() + " ₽"
 
         val asksSubscriptions = listOf("подписк", "автоплатеж", "автоплатёж").any(question::contains)
-        val asksPlaces = listOf(
-            "рядом", "мест", "аптек", "магазин", "продукт", "кафе", "ресторан",
-            "купить", "ближайш", "где найти", "адрес"
-        ).any(question::contains)
-        val asksOverspend = listOf("превыш", "перерасход", "перерасход", "выход за лимит").any(question::contains)
+        val asksOverspend = listOf("превыш", "перерасход", "выход за лимит").any(question::contains)
         val asksLimits = asksOverspend || listOf("лимит", "категор").any(question::contains)
         val asksExpenses = listOf("потрат", "расход", "ушло денег", "сколько ушло").any(question::contains)
+        // Expense/limit questions take precedence: "сколько потратил в аптеке"
+        // must not be mistaken for a request to find a pharmacy.
+        val asksPlaces = !asksExpenses && !asksLimits && listOf(
+            "рядом", "мест", "аптек", "магазин", "продукт", "кафе", "ресторан",
+            "купить", "ближайш", "где", "адрес"
+        ).any(question::contains)
         val asksDaily = listOf(
             "в день", "ежеднев", "сколько можно тратить", "сколько тратить",
             "до конца месяца", "остаток", "хватит ли", "бюджет", "деньги"
