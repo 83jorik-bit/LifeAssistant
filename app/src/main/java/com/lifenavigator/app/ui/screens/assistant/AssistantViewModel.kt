@@ -18,8 +18,8 @@ data class AssistantUiState(
     val messages: List<AssistantMessage> = listOf(
         AssistantMessage(
             id = "welcome",
-            text = "Привет! Я вижу ваш бюджет и места рядом. Спросите, например: " +
-                "«сколько я могу тратить в день до конца месяца?» или «где рядом купить продукты подешевле?»",
+            text = "Привет! Я LifeAssistant. Пока ты занимаешься важным, я помогу с повседневными задачами. " +
+                "Например: «сколько я могу тратить в день до конца месяца?» или «какие места рядом стоит посмотреть?»",
             isFromUser = false
         )
     ),
@@ -44,8 +44,8 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
 
         viewModelScope.launch {
             val reply = if (!YandexGptRepository.isConfigured) {
-                "Помощник пока не подключён. Нужны ключ YandexGPT и идентификатор каталога " +
-                    "в local.properties — как их получить, написано в README."
+                "Облачный ИИ пока отключён до настройки защищённого серверного прокси. " +
+                    "Секретный API-ключ нельзя безопасно хранить внутри APK."
             } else {
                 val context = AssistantContext.build(getApplication())
                 val history = _uiState.value.messages

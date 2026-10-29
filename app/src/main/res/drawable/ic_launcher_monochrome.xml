@@ -1,0 +1,16 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Silhouette of a resting person beside a task-working assistant. -->
+    <path android:fillColor="#000000" android:pathData="M21,65 C21,60 25,58 30,60 L50,72 L49,81 L29,77 C24,76 21,72 21,65 Z" />
+    <path android:fillColor="#000000" android:pathData="M25,51 C23,45 27,40 33,40 C39,40 43,45 41,51 L37,57 L30,59 L25,55 Z" />
+    <path android:fillColor="#000000" android:pathData="M33,57 C39,55 44,58 48,63 C52,67 57,70 62,70 L60,77 C51,78 43,72 37,67 L29,62 Z" />
+    <path android:fillColor="#000000" android:pathData="M62,47 C60,52 61,59 64,65 L74,66 C77,60 78,53 76,47 Z" />
+    <path android:fillColor="#000000" android:pathData="M63,30 C59,30 56,33 56,37 L56,41 C56,45 59,48 63,48 L74,48 C78,48 81,45 81,41 L81,37 C81,33 78,30 74,30 Z" />
+    <path android:fillColor="#000000" android:pathData="M75,24 L84,24 C86,24 88,26 88,28 L88,38 C88,40 86,42 84,42 L75,42 C73,42 71,40 71,38 L71,28 C71,26 73,24 75,24 Z" />
+    <path android:fillColor="#000000" android:pathData="M75,51 C79,50 81,53 82,57 L85,59 L88,58 L89,62 L82,65 C79,63 77,59 75,57 Z" />
+    <path android:fillColor="#000000" android:pathData="M74,60 L86,60 L88,69 L72,69 Z" />
+    <path android:fillColor="#000000" android:pathData="M71,70 L89,70 L86,73 L73,73 Z" />
+</vector>

@@ -116,7 +116,7 @@ fun AssistantScreen(viewModel: AssistantViewModel = viewModel()) {
     }
 
     Column(Modifier.fillMaxSize()) {
-        TopAppBar(title = { Text("Личный помощник") })
+        TopAppBar(title = { Text("LifeAssistant") })
 
         LazyColumn(
             state = listState,
@@ -142,7 +142,7 @@ fun AssistantScreen(viewModel: AssistantViewModel = viewModel()) {
                 value = input,
                 onValueChange = { input = it },
                 modifier = Modifier.weight(1f),
-                placeholder = { Text("Спросите про бюджет, подписки, маршрут…") },
+                placeholder = { Text("Чем заняться вместо рутины?") },
                 singleLine = true
             )
             Spacer(Modifier.width(4.dp))

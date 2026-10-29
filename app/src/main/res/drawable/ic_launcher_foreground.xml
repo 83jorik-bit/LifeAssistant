@@ -3,39 +3,107 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- LifeAssistant: a calm, mindful assistant represented by a halo, lotus leaves and a meditating figure. -->
-    <!-- Outer halo -->
+    <!-- LifeAssistant: the person relaxes while the robot handles tasks. -->
+    <!-- Warm orbit: calm and useful automation -->
     <path
         android:fillColor="#00000000"
-        android:strokeColor="#55A99B"
-        android:strokeWidth="2.8"
+        android:strokeColor="#A9CDB7"
+        android:strokeWidth="2.4"
         android:strokeLineCap="round"
-        android:pathData="M23,54 A31,31 0,0 1,85 54" />
+        android:pathData="M23,58 C22,39 36,23 54,23 C70,23 83,36 85,51" />
+
+    <!-- A task card being handled by the assistant -->
+    <path
+        android:fillColor="#FFFDF7"
+        android:pathData="M75,24 L84,24 C86,24 88,26 88,28 L88,38 C88,40 86,42 84,42 L75,42 C73,42 71,40 71,38 L71,28 C71,26 73,24 75,24 Z" />
+    <path
+        android:fillColor="#F18C70"
+        android:pathData="M75,32 L77,34 L82,29 L84,31 L77,38 L73,34 Z" />
+
+    <!-- Comfortable chair and cushion -->
+    <path
+        android:fillColor="#287F73"
+        android:pathData="M21,65 C21,60 25,58 30,60 L51,72 L49,81 L29,77 C24,76 21,72 21,65 Z" />
+    <path
+        android:fillColor="#83B97D"
+        android:pathData="M23,66 C24,63 27,62 31,64 L47,74 L45,77 L29,73 C25,72 23,69 23,66 Z" />
+
+    <!-- Relaxed person: resting head, closed eyes, reclined body -->
+    <path
+        android:fillColor="#176A68"
+        android:pathData="M25,51 C23,45 27,40 33,40 C39,40 43,45 41,51 L37,57 L30,59 L25,55 Z" />
+    <path
+        android:fillColor="#F7EBD6"
+        android:pathData="M28,47 C30,44 35,44 38,47 C40,51 38,55 34,57 C30,56 28,52 28,47 Z" />
     <path
         android:fillColor="#00000000"
-        android:strokeColor="#F18C70"
-        android:strokeWidth="2.8"
+        android:strokeColor="#176A68"
+        android:strokeWidth="1.3"
         android:strokeLineCap="round"
-        android:pathData="M54,23 A31,31 0,0 1,85 54" />
-    <path android:fillColor="#75BFA7" android:pathData="M54,18m-4.2,0a4.2,4.2 0,1 0,8.4 0a4.2,4.2 0,1 0,-8.4 0" />
-    <path android:fillColor="#2E8D83" android:pathData="M23,54m-3.5,0a3.5,3.5 0,1 0,7 0a3.5,3.5 0,1 0,-7 0" />
-    <path android:fillColor="#F18C70" android:pathData="M85,54m-3.5,0a3.5,3.5 0,1 0,7 0a3.5,3.5 0,1 0,-7 0" />
-    <!-- Lotus leaves -->
-    <path android:fillColor="#287F73" android:pathData="M54,83 C42,78 29,68 26,54 C39,59 48,67 54,83 Z" />
-    <path android:fillColor="#83B97D" android:pathData="M54,83 C66,78 79,68 82,54 C69,59 60,67 54,83 Z" />
-    <path android:fillColor="#F18C70" android:pathData="M54,84 C46,77 43,69 44,62 C51,66 54,73 54,84 Z" />
-    <path android:fillColor="#F18C70" android:pathData="M54,84 C62,77 65,69 64,62 C57,66 54,73 54,84 Z" />
-    <!-- Crossed legs -->
-    <path android:fillColor="#F6E7CC" android:pathData="M50,76 C43,72 33,72 28,77 C24,81 29,85 38,85 L53,82 Z" />
-    <path android:fillColor="#F6E7CC" android:pathData="M58,76 C65,72 75,72 80,77 C84,81 79,85 70,85 L55,82 Z" />
-    <path android:fillColor="#D8E5D4" android:pathData="M36,79 C43,76 49,78 54,81 C59,78 65,76 72,79 C65,84 59,86 54,86 C49,86 43,84 36,79 Z" />
-    <!-- Body and shoulders -->
-    <path android:fillColor="#F7EBD6" android:pathData="M42,55 C43,51 47,49 50,49 L58,49 C62,49 65,52 66,56 L72,73 C66,78 60,80 54,80 C48,80 42,78 36,73 Z" />
-    <!-- Head and flowing hair -->
-    <path android:fillColor="#176A68" android:pathData="M39,43 C36,31 43,24 54,24 C65,24 72,32 69,44 L66,54 C63,49 63,42 64,37 C58,40 49,39 43,36 C44,44 43,49 41,54 Z" />
-    <path android:fillColor="#F7EBD6" android:pathData="M43,35 C46,31 50,30 54,30 C60,30 64,34 64,40 C64,47 60,52 54,53 C48,52 43,47 43,40 Z" />
-    <!-- Closed eyes -->
-    <path android:fillColor="#00000000" android:strokeColor="#176A68" android:strokeWidth="1.4" android:strokeLineCap="round" android:pathData="M47,41 Q50,44 53,41 M56,41 Q59,44 62,41" />
-    <!-- Small calm glow -->
-    <path android:fillColor="#FFFFFF" android:fillAlpha="0.72" android:pathData="M54,15m-1.1,0a1.1,1.1 0,1 0,2.2 0a1.1,1.1 0,1 0,-2.2 0" />
+        android:pathData="M30,50 Q33,52 36,50" />
+    <path
+        android:fillColor="#F7EBD6"
+        android:pathData="M33,57 C39,55 44,58 48,63 C52,67 57,70 62,70 L60,77 C51,78 43,72 37,67 L29,62 Z" />
+    <path
+        android:fillColor="#F7EBD6"
+        android:pathData="M31,58 C27,60 26,63 27,67 L32,69 C31,65 33,62 37,61 Z" />
+    <path
+        android:fillColor="#D7E4D5"
+        android:pathData="M48,69 C54,70 60,70 64,68 L66,73 C61,78 54,80 48,77 L42,73 Z" />
+
+    <!-- The assistant's body and working arm -->
+    <path
+        android:fillColor="#E7F1EC"
+        android:pathData="M62,47 C60,52 61,59 64,65 L74,66 C77,60 78,53 76,47 Z" />
+    <path
+        android:fillColor="#55CFCB"
+        android:pathData="M63,52 L67,54 L66,63 L63,62 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M62,51 C58,51 56,48 54,45 L57,42 C61,45 63,45 66,46 Z" />
+    <path
+        android:fillColor="#D9E8E3"
+        android:pathData="M55,41 C57,40 59,41 60,43 L58,46 C56,46 54,44 55,41 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M75,51 C79,50 81,53 82,57 L85,59 L88,58 L89,62 L82,65 C79,63 77,59 75,57 Z" />
+
+    <!-- Laptop: the assistant is actively doing the work -->
+    <path
+        android:fillColor="#9FBAB7"
+        android:pathData="M74,60 L86,60 L88,69 L72,69 Z" />
+    <path
+        android:fillColor="#176A68"
+        android:pathData="M76,62 L84,62 L85,67 L75,67 Z" />
+    <path
+        android:fillColor="#D7E4D5"
+        android:pathData="M71,70 L89,70 L86,73 L73,73 Z" />
+
+    <!-- Robot head, glowing eyes and antenna -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M63,30 C59,30 56,33 56,37 L56,41 C56,45 59,48 63,48 L74,48 C78,48 81,45 81,41 L81,37 C81,33 78,30 74,30 Z" />
+    <path
+        android:fillColor="#163E45"
+        android:pathData="M63,33 L74,33 C76,33 78,35 78,37 L78,41 C78,43 76,45 74,45 L63,45 C61,45 59,43 59,41 L59,37 C59,35 61,33 63,33 Z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#62E3DF"
+        android:strokeWidth="1.7"
+        android:strokeLineCap="round"
+        android:pathData="M63,39 Q65,36 67,39 M70,39 Q72,36 74,39" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#55CFCB"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:pathData="M68,30 L68,26" />
+    <path
+        android:fillColor="#F18C70"
+        android:pathData="M68,24 m-2.5,0 a2.5,2.5 0,1 0,5 0 a2.5,2.5 0,1 0,-5 0" />
+
+    <!-- A small productivity spark -->
+    <path
+        android:fillColor="#F4B64F"
+        android:pathData="M49,34 L50.5,37.5 L54,39 L50.5,40.5 L49,44 L47.5,40.5 L44,39 L47.5,37.5 Z" />
 </vector>
