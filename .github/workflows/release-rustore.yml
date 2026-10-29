@@ -57,24 +57,31 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '17'
 
       - name: Create local.properties with API keys
         run: |
-          echo "MAPKIT_API_KEY=${{ secrets.MAPKIT_API_KEY }}" > local.properties
-          echo "RASP_API_KEY=${{ secrets.RASP_API_KEY }}" >> local.properties
-          # Вход через внешние ID. Если секреты не заданы, значения останутся пустыми
-          # и кнопки входа будут показаны неактивными — сборка при этом не ломается.
-          echo "YANDEX_CLIENT_ID=${{ secrets.YANDEX_CLIENT_ID }}" >> local.properties
-          echo "VK_CLIENT_ID=${{ secrets.VK_CLIENT_ID }}" >> local.properties
-          echo "YANDEX_REDIRECT_URI=${{ secrets.YANDEX_REDIRECT_URI }}" >> local.properties
-          echo "BACKEND_BASE_URL=${{ secrets.BACKEND_BASE_URL }}" >> local.properties
-          echo "YANDEX_GPT_API_KEY=${{ secrets.YANDEX_GPT_API_KEY }}" >> local.properties
-          echo "YANDEX_GPT_FOLDER_ID=${{ secrets.YANDEX_GPT_FOLDER_ID }}" >> local.properties
-          echo "VK_REDIRECT_URI=${{ secrets.VK_REDIRECT_URI }}" >> local.properties
+          MAPKIT_API_KEY: ${{ secrets.MAPKIT_API_KEY }}
+          RASP_API_KEY: ${{ secrets.RASP_API_KEY }}
+          YANDEX_CLIENT_ID: ${{ secrets.YANDEX_CLIENT_ID }}
+          VK_CLIENT_ID: ${{ secrets.VK_CLIENT_ID }}
+          YANDEX_REDIRECT_URI: ${{ secrets.YANDEX_REDIRECT_URI }}
+          BACKEND_BASE_URL: ${{ secrets.BACKEND_BASE_URL }}
+          YANDEX_GPT_FOLDER_ID: ${{ secrets.YANDEX_GPT_FOLDER_ID }}
+        shell: bash
+        run: |
+          {
+            printf 'MAPKIT_API_KEY=%s\n' "$MAPKIT_API_KEY"
+            printf 'RASP_API_KEY=%s\n' "$RASP_API_KEY"
+            printf 'YANDEX_CLIENT_ID=%s\n' "$YANDEX_CLIENT_ID"
+            printf 'VK_CLIENT_ID=%s\n' "$VK_CLIENT_ID"
+            printf 'YANDEX_REDIRECT_URI=%s\n' "$YANDEX_REDIRECT_URI"
+            printf 'BACKEND_BASE_URL=%s\n' "$BACKEND_BASE_URL"
+            printf 'YANDEX_GPT_FOLDER_ID=%s\n' "$YANDEX_GPT_FOLDER_ID"
+          } > local.properties
 
       # Без подписи RuStore файл не примет, а сборка при отсутствии секретов
       # молча выходит неподписанной. Лучше остановиться здесь с понятным текстом.
