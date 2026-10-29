@@ -37,6 +37,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           persist-credentials: false
+        with:
+          persist-credentials: false
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -123,7 +125,6 @@ jobs:
       - name: Publish to RuStore
         if: ${{ inputs.publish }}
         env:
-          GH_TOKEN: ${{ github.token }}
           RUSTORE_KEY_ID: ${{ secrets.RUSTORE_KEY_ID }}
           RUSTORE_PRIVATE_KEY: ${{ secrets.RUSTORE_PRIVATE_KEY }}
           PACKAGE_NAME: com.lifenavigator.app
