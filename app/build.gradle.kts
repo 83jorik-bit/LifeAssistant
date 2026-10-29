@@ -50,12 +50,10 @@ android {
         versionName = appVersionName
 
         buildConfigField("String", "MAPKIT_API_KEY", "\"$mapkitApiKey\"")
-        buildConfigField("String", "RASP_API_KEY", "\"$raspApiKey\"")
         buildConfigField("String", "YANDEX_CLIENT_ID", "\"$yandexClientId\"")
         buildConfigField("String", "VK_CLIENT_ID", "\"$vkClientId\"")
         buildConfigField("String", "YANDEX_REDIRECT_URI", "\"$yandexRedirect\"")
         buildConfigField("String", "BACKEND_BASE_URL", "\"$backendBaseUrl\"")
-        buildConfigField("String", "YANDEX_GPT_FOLDER_ID", "\"$yandexGptFolderId\"")
         manifestPlaceholders["vkRedirectScheme"] =
             if (vkClientId.isNotBlank()) "vk$vkClientId" else "vk-not-configured"
     }
