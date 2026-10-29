@@ -6,6 +6,8 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
+import java.io.File
+import java.util.Properties
 import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
@@ -93,7 +95,7 @@ object RaspRepository {
         longitude: Double,
         placeName: String
     ): ScheduleResult = withContext(Dispatchers.IO) {
-        if (RASP_API_KEY.isBlank()) {
+        if (raspApiKey.isBlank()) {
             return@withContext ScheduleResult.Error(
                 "Не задан ключ API Яндекс Расписаний (RASP_API_KEY)"
             )
