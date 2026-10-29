@@ -8,6 +8,7 @@ const profileRoutes = require('./routes/profile');
 const consentRoutes = require('./routes/consent');
 const budgetRoutes = require('./routes/budget');
 const accountRoutes = require('./routes/account');
+const assistantRoutes = require('./routes/assistant');
 
 const app = express();
 
@@ -23,6 +24,7 @@ app.use('/api/profile', profileRoutes);
 app.use('/api/consent', consentRoutes);
 app.use('/api/budget', budgetRoutes);
 app.use('/api/account', accountRoutes);
+app.use('/api/assistant', assistantRoutes);
 
 // Единая обработка ошибок — чтобы исключение в обработчике маршрута не роняло
 // весь процесс, а превращалось в аккуратный 500 с сообщением в лог сервера,

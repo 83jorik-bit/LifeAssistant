@@ -117,6 +117,12 @@ fun AssistantScreen(viewModel: AssistantViewModel = viewModel()) {
 
     Column(Modifier.fillMaxSize()) {
         TopAppBar(title = { Text("LifeAssistant") })
+        Text(
+            text = "Для персональных ответов передаются сводка бюджета и названия мест; имя и точные координаты не отправляются.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+        )
 
         LazyColumn(
             state = listState,

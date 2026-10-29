@@ -1,6 +1,7 @@
 package com.lifenavigator.app.data.backend
 
 import com.lifenavigator.app.BuildConfig
+import com.lifenavigator.app.data.ai.GptMessage
 import com.lifenavigator.app.data.model.CustomCategory
 import com.lifenavigator.app.data.model.Expense
 import kotlinx.coroutines.Dispatchers
@@ -36,7 +37,7 @@ object BackendApi {
 
     val isConfigured: Boolean get() = BuildConfig.BACKEND_BASE_URL.isNotBlank()
 
-    private const val TIMEOUT_MS = 15_000
+    private const val TIMEOUT_MS = 35_000
 
     /** Обменивает access_token провайдера на нашу сессию. */
     suspend fun login(provider: String, providerAccessToken: String): BackendResult<String> =
@@ -81,6 +82,38 @@ object BackendApi {
                 BackendResult.Success(Unit)
             }.getOrElse { e -> BackendResult.Failure(e.message ?: "Не удалось отправить согласие на сервер") }
         }
+
+    /**
+     * Запрашивает ответ ИИ через наш сервер. API-ключ YandexGPT остаётся на сервере,
+     * а приложение передаёт только сессионный токен и контекст для ответа.
+     */
+    suspend fun askAssistant(
+        sessionToken: String,
+        systemPrompt: String,
+        history: List<GptMessage>
+    ): BackendResult<String> = withContext(Dispatchers.IO) {
+        runCatching {
+            val historyJson = JSONArray()
+            history.forEach { message ->
+                historyJson.put(
+                    JSONObject()
+                        .put("role", message.role)
+                        .put("text", message.text)
+                )
+            }
+            val body = JSONObject()
+                .put("systemPrompt", systemPrompt)
+                .put("history", historyJson)
+            val response = JSONObject(
+                request("POST", "/api/assistant", sessionToken, body.toString())
+            )
+            val text = response.optString("text").trim()
+            if (text.isBlank()) throw IllegalStateException("Сервер вернул пустой ответ ИИ")
+            BackendResult.Success(text)
+        }.getOrElse { e ->
+            BackendResult.Failure(e.message ?: "Не удалось получить ответ помощника")
+        }
+    }
 
     /** Просит сервер удалить пользователя целиком. Best-effort: вызывающий код не должен
      *  блокировать локальное удаление данных ожиданием этого запроса. */
@@ -154,7 +187,7 @@ object BackendApi {
     private fun request(method: String, path: String, sessionToken: String?, body: String?): String {
         if (!isConfigured) throw IllegalStateException("Сервер не настроен (пуст BACKEND_BASE_URL)")
 
-        val connection = (URL(BuildConfig.BACKEND_BASE_URL + path).openConnection() as HttpURLConnection).apply {
+        val connection = (URL(BuildConfig.BACKEND_BASE_URL.trimEnd('/') + path).openConnection() as HttpURLConnection).apply {
             requestMethod = method
             connectTimeout = TIMEOUT_MS
             readTimeout = TIMEOUT_MS

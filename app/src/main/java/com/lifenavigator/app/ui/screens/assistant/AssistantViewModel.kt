@@ -5,8 +5,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.lifenavigator.app.data.ai.AssistantContext
 import com.lifenavigator.app.data.ai.GptMessage
-import com.lifenavigator.app.data.ai.GptResult
-import com.lifenavigator.app.data.ai.YandexGptRepository
+import com.lifenavigator.app.data.backend.BackendApi
+import com.lifenavigator.app.data.backend.BackendResult
+import com.lifenavigator.app.data.local.SessionStore
 import com.lifenavigator.app.data.model.AssistantMessage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -31,36 +32,57 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
     private val _uiState = MutableStateFlow(AssistantUiState())
     val uiState: StateFlow<AssistantUiState> = _uiState
 
-    /**
-     * Сколько последних реплик отправляем модели вместе с новым вопросом.
-     * Без истории помощник не поймёт «а подешевле?» после предыдущего вопроса,
-     * а слать весь диалог целиком — лишние токены и деньги.
-     */
+    /** Ограничиваем историю: достаточно последних реплик для контекста диалога. */
     private val historyDepth = 8
 
     fun sendMessage(text: String) {
-        val userMessage = AssistantMessage(id = UUID.randomUUID().toString(), text = text, isFromUser = true)
+        val trimmed = text.trim()
+        if (trimmed.isBlank() || _uiState.value.isReplying) return
+
+        val userMessage = AssistantMessage(
+            id = UUID.randomUUID().toString(),
+            text = trimmed,
+            isFromUser = true
+        )
         _uiState.update { it.copy(messages = it.messages + userMessage, isReplying = true) }
 
         viewModelScope.launch {
-            val reply = if (!YandexGptRepository.isConfigured) {
-                "Облачный ИИ пока отключён до настройки защищённого серверного прокси. " +
-                    "Секретный API-ключ нельзя безопасно хранить внутри APK."
-            } else {
-                val context = AssistantContext.build(getApplication())
-                val history = _uiState.value.messages
-                    // Приветствие — наш текст, модели он не нужен и только сбивает.
-                    .filterNot { it.id == "welcome" }
-                    .takeLast(historyDepth)
-                    .map { GptMessage(role = if (it.isFromUser) "user" else "assistant", text = it.text) }
+            val token = SessionStore.token.value
+            val reply = when {
+                !BackendApi.isConfigured ->
+                    "Защищённый ИИ пока не настроен: укажите BACKEND_BASE_URL при сборке " +
+                        "и настройте ключ YandexGPT только на сервере."
 
-                when (val result = YandexGptRepository.ask(context, history)) {
-                    is GptResult.Success -> result.text
-                    is GptResult.Failure -> "Не удалось получить ответ: ${result.message}"
+                token.isNullOrBlank() ->
+                    "Для работы ИИ войдите через Яндекс ID или VK ID в разделе входа. " +
+                        "Это создаст защищённую серверную сессию; остальные функции приложения работают и без неё."
+
+                else -> runCatching {
+                    val context = AssistantContext.build(getApplication())
+                    val history = _uiState.value.messages
+                        .filterNot { it.id == "welcome" }
+                        .takeLast(historyDepth)
+                        .map { message ->
+                            GptMessage(
+                                role = if (message.isFromUser) "user" else "assistant",
+                                text = message.text
+                            )
+                        }
+
+                    when (val result = BackendApi.askAssistant(token, context, history)) {
+                        is BackendResult.Success -> result.value
+                        is BackendResult.Failure -> "Не удалось получить ответ: ${result.message}"
+                    }
+                }.getOrElse { error ->
+                    "Не удалось подготовить запрос: ${error.message ?: "неизвестная ошибка"}"
                 }
             }
 
-            val replyMessage = AssistantMessage(id = UUID.randomUUID().toString(), text = reply, isFromUser = false)
+            val replyMessage = AssistantMessage(
+                id = UUID.randomUUID().toString(),
+                text = reply,
+                isFromUser = false
+            )
             _uiState.update { it.copy(messages = it.messages + replyMessage, isReplying = false) }
         }
     }

@@ -47,6 +47,11 @@ jobs:
             printf 'YANDEX_GPT_FOLDER_ID=%s\n' "$YANDEX_GPT_FOLDER_ID"
           } > local.properties
 
+      - name: Validate backend JavaScript syntax
+        run: |
+          node --check server/src/index.js
+          node --check server/src/routes/assistant.js
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
