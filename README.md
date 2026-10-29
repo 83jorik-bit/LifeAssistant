@@ -47,49 +47,36 @@ app/src/main/java/com/lifenavigator/app/
 сама предложит его сгенерировать. Либо соберите через локально установленный Gradle:
 `gradle assembleDebug` (см. также автосборку через GitHub Actions ниже).
 
-## Публикация на GitHub
+## Безопасная работа с секретами
 
-Проект уже готов к пуш в свой репозиторий — ключ Yandex MapKit исключён из git (`.gitignore`),
-а в комплекте есть workflow для автосборки APK в GitHub Actions.
+Репозиторий публичный: **никогда не коммитьте** `local.properties`, API keys,
+релизные keystore-файлы, base64-версии keystore или приватные ключи RuStore.
+Локальная конфигурация должна находиться только в игнорируемом `local.properties`.
+Для CI используйте GitHub Actions Secrets.
 
-**Важно:** этот проект уже один раз выкладывался в открытый репозиторий вместе с
-реальным ключом (`83jorik-bit/LifeNavigator`). Если планируете использовать тот же
-репозиторий — **сначала удалите или сделайте его приватным**, а ключ Yandex — перевыпустите
-в кабинете разработчика (developer.tech.yandex.ru), поскольку старый уже мог быть скомпрометирован.
+Важно: всё, что помещается в Android APK через `BuildConfig`, ресурсы или манифест,
+может быть извлечено из APK. OAuth client IDs и ограниченный MapKit mobile key — не
+эквивалент серверного секрета; ограничивайте ключи в кабинетах поставщиков и следите
+за квотами. **YandexGPT и Yandex Rasp production keys не следует встраивать в APK**.
+Переведите эти запросы на собственный backend и храните ключи только на сервере.
+До настройки backend прямой YandexGPT-вызов в мобильном приложении отключён.
 
-### Первая публикация
-```bash
-cd LifeNavigator
-git init
-git add .
-git commit -m "Initial commit: LifeNavigator Android MVP"
-git branch -M main
-git remote add origin https://github.com/<ваш-логин>/<репозиторий>.git
-git push -u origin main
-```
+### Что хранить в GitHub Actions Secrets
 
-### Настройка автосборки (GitHub Actions)
+- `MAPKIT_API_KEY` — ограниченный ключ MapKit для приложения (ключ мобильного SDK всё равно может быть извлечён из APK).
+- `YANDEX_CLIENT_ID`, `VK_CLIENT_ID`, `YANDEX_REDIRECT_URI` — идентификаторы приложения и адрес возврата, если нужны для CI.
+- `BACKEND_BASE_URL` — адрес собственного сервера, не секрет.
+- `YANDEX_GPT_FOLDER_ID` — идентификатор каталога, не секрет.
+- `RELEASE_KEYSTORE_BASE64`, `RELEASE_STORE_PASSWORD`, `RELEASE_KEY_ALIAS`, `RELEASE_KEY_PASSWORD` — подпись RuStore; держите секретами.
+- `RUSTORE_KEY_ID`, `RUSTORE_PRIVATE_KEY` — ключи API RuStore; приватный ключ держите секретом.
 
-В репозитории уже лежит `.github/workflows/android-build.yml` — он собирает debug-APK
-при каждом push в `main` и по кнопке вручную. Чтобы сборка прошла успешно, добавьте
-ключ Yandex MapKit как секрет репозитория (он НЕ виден в коде и логах):
+Не добавляйте секреты в вывод команд и не сохраняйте их как артефакты. Workflow публикации удаляет временные файлы ключей после запуска. Ограничьте список людей, имеющих право запускать workflow с публикацией.
 
-1. На странице репозитория: **Settings → Secrets and variables → Actions → New repository secret**
-2. Добавьте два секрета: `MAPKIT_API_KEY` (ключ Yandex MapKit) и `RASP_API_KEY`
-   (ключ API Яндекс Расписаний)
-3. Сохраните — после этого workflow сможет собирать APK
+### Локальная разработка
 
-После пуша откройте вкладку **Actions** в репозитории — там будет прогресс сборки, а
-готовый APK можно скачать из артефактов запуска (`app-debug-apk`).
+Скопируйте `local.properties.example` в `local.properties` и задайте только необходимые локальные значения. Этот файл исключён из Git.
 
-### Локальная разработка после клонирования
-
-```bash
-git clone https://github.com/<ваш-логин>/<репозиторий>.git
-cd <репозиторий>
-cp local.properties.example local.properties
-# впишите свой ключ в local.properties
-```
+**История репозитория:** исключение файла из `.gitignore` не удаляет ранее закоммиченные секреты из старых коммитов. Если рабочий ключ когда-либо был публичен, немедленно отзовите или перевыпустите его в соответствующей консоли. При необходимости очистите историю Git отдельной процедурой и согласуйте это с теми, кто клонировал репозиторий.
 
 ## Что уже работает (MVP)
 
