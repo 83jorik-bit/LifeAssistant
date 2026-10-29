@@ -56,7 +56,14 @@ object BackendApi {
         withContext(Dispatchers.IO) {
             runCatching {
                 val response = JSONObject(request("GET", "/api/budget", sessionToken, null))
-                BackendResult.Success(parseBudget(response))
+                // Сервер возвращает конверт { data, updatedAt }; если бюджет ещё не создан,
+                // data == null и клиент начинает с пустого снимка.
+                val payload = if (response.has("data")) {
+                    response.optJSONObject("data") ?: JSONObject()
+                } else {
+                    response
+                }
+                BackendResult.Success(parseBudget(payload))
             }.getOrElse { e -> BackendResult.Failure(e.message ?: "Не удалось получить бюджет с сервера") }
         }
 
