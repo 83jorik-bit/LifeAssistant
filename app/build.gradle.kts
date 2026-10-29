@@ -6,21 +6,14 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-// Local-only configuration. Never commit local.properties.
 val localProperties = Properties().apply {
     val file = rootProject.file("local.properties")
-    if (file.exists()) {
-        file.inputStream().use { load(it) }
-    }
+    if (file.exists()) file.inputStream().use { load(it) }
 }
 
-// Values that may be used by mobile clients (MapKit / public client IDs) still must
-// be restricted in their provider consoles where possible. Mobile APKs can be inspected.
 fun configValue(name: String): String =
     localProperties.getProperty(name) ?: System.getenv(name) ?: ""
 
-// Release signing secrets are injected as environment variables in CI or provided
-// in local.properties during local release builds.
 fun secret(name: String): String? =
     localProperties.getProperty(name)?.takeIf { it.isNotBlank() }
         ?: System.getenv(name)?.takeIf { it.isNotBlank() }
@@ -31,12 +24,10 @@ val yandexClientId = configValue("YANDEX_CLIENT_ID")
 val vkClientId = configValue("VK_CLIENT_ID")
 val yandexRedirect = configValue("YANDEX_REDIRECT_URI")
 val backendBaseUrl = configValue("BACKEND_BASE_URL")
-
-// IMPORTANT: secrets embedded in BuildConfig are extractable from the APK.
-// The YandexGPT API key is intentionally no longer injected into the Android app.
-// Cloud-model requests must be performed by the backend, where the credential remains server-side.
 val yandexGptFolderId = configValue("YANDEX_GPT_FOLDER_ID")
 
+// API keys included in BuildConfig are extractable from the APK. Do not inject
+// YANDEX_GPT_API_KEY into the mobile app; cloud calls must go through a backend.
 val releaseStoreFile = secret("RELEASE_STORE_FILE")
 val releaseStorePassword = secret("RELEASE_STORE_PASSWORD")
 val releaseKeyAlias = secret("RELEASE_KEY_ALIAS")
@@ -64,10 +55,7 @@ android {
         buildConfigField("String", "VK_CLIENT_ID", "\"$vkClientId\"")
         buildConfigField("String", "YANDEX_REDIRECT_URI", "\"$yandexRedirect\"")
         buildConfigField("String", "BACKEND_BASE_URL", "\"$backendBaseUrl\"")
-        // Preserve the folder ID (not a secret) for identifying the cloud model,
-        // but never bake YANDEX_GPT_API_KEY into BuildConfig/APK.
         buildConfigField("String", "YANDEX_GPT_FOLDER_ID", "\"$yandexGptFolderId\"")
-
         manifestPlaceholders["vkRedirectScheme"] =
             if (vkClientId.isNotBlank()) "vk$vkClientId" else "vk-not-configured"
     }
@@ -81,7 +69,6 @@ android {
                 keyPassword = releaseKeyPassword
             }
         }
-
         getByName("debug") {
             storeFile = rootProject.file("keystore/lifenavigator-debug.keystore")
             storePassword = "lifenavigator"
@@ -102,26 +89,20 @@ android {
         compose = true
         buildConfig = true
     }
-
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-
-    kotlinOptions {
-        jvmTarget = "17"
-    }
+    kotlinOptions { jvmTarget = "17" }
 }
 
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
     implementation("androidx.activity:activity-compose:1.9.1")
-
     implementation("com.yandex.android:maps.mobile:4.42.0-full")
     implementation("androidx.compose.runtime:runtime-livedata:1.6.8")
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
-
     implementation(platform("androidx.compose:compose-bom:2024.06.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
@@ -130,7 +111,6 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.navigation:navigation-compose:2.7.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.4")
-
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
