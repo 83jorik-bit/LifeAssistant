@@ -85,7 +85,7 @@ object RaspRepository {
     ): ScheduleResult = withContext(Dispatchers.IO) {
         if (raspApiKey.isBlank()) {
             return@withContext ScheduleResult.Error(
-                "Не задан ключ API Яндекс Расписаний (RASP_API_KEY)"
+                "Расписание временно отключено до настройки защищённого серверного прокси."
             )
         }
 
