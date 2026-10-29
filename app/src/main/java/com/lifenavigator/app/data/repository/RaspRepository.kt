@@ -78,7 +78,7 @@ object RaspRepository {
         longitude: Double,
         placeName: String
     ): ScheduleResult = withContext(Dispatchers.IO) {
-        if (BuildConfig.RASP_API_KEY.isBlank()) {
+        if (RASP_API_KEY.isBlank()) {
             return@withContext ScheduleResult.Error(
                 "Не задан ключ API Яндекс Расписаний (RASP_API_KEY)"
             )
