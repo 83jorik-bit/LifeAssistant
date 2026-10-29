@@ -50,7 +50,7 @@ object YandexGptRepository {
         withContext(Dispatchers.IO) {
             if (!isConfigured) {
                 return@withContext GptResult.Failure(
-                    "Помощник не настроен: нужны YANDEX_GPT_API_KEY и YANDEX_GPT_FOLDER_ID"
+                    "Облачный помощник временно отключён до настройки защищённого серверного прокси."
                 )
             }
 
