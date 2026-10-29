@@ -55,6 +55,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -100,7 +102,12 @@ jobs:
           fi
 
       - name: Restore release keystore
-        run: echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 -d > release.keystore
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+        shell: bash
+        run: |
+          printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > release.keystore
+          chmod 600 release.keystore
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -129,9 +136,12 @@ jobs:
             echo "ВНИМАНИЕ: сборка не подписана — проверьте секреты RELEASE_*."
           fi
 
-      - name: Remove keystore from runner
+      - name: Remove temporary secrets from runner
         if: always()
-        run: rm -f release.keystore
+        shell: bash
+        run: |
+          rm -f release.keystore private_key.pem local.properties
+          find . -maxdepth 3 -type f \( -name '*.pem' -o -name '*.p12' -o -name '*.pfx' \) -delete
 
       - name: Publish to RuStore
         if: ${{ inputs.publish }}
