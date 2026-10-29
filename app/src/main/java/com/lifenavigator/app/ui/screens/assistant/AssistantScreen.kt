@@ -118,7 +118,11 @@ fun AssistantScreen(viewModel: AssistantViewModel = viewModel()) {
     Column(Modifier.fillMaxSize()) {
         TopAppBar(title = { Text("LifeAssistant") })
         Text(
-            text = "Запрос, последние реплики и сводка бюджета/мест обрабатываются вашим сервером и YandexGPT; имя, почта и точные координаты не включаются.",
+            text = if (state.replyModeLabel.startsWith("Облачный ИИ")) {
+                "Режим: ${state.replyModeLabel}. Сводка бюджета и последние реплики передаются серверу и YandexGPT; имя, почта и точные координаты не включаются."
+            } else {
+                "Режим: ${state.replyModeLabel}. Ответы формируются на устройстве по данным бюджета и сохранённым местам. Для свободного диалога нужен настроенный серверный ИИ."
+            },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
