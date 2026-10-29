@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.lifenavigator.app.data.ai.AssistantContext
 import com.lifenavigator.app.data.ai.GptMessage
+import com.lifenavigator.app.data.ai.LocalAssistantEngine
 import com.lifenavigator.app.data.backend.BackendApi
 import com.lifenavigator.app.data.backend.BackendResult
 import com.lifenavigator.app.data.local.SessionStore
@@ -20,11 +21,12 @@ data class AssistantUiState(
         AssistantMessage(
             id = "welcome",
             text = "Привет! Я LifeAssistant. Пока ты занимаешься важным, я помогу с повседневными задачами. " +
-                "Например: «сколько я могу тратить в день до конца месяца?» или «какие места рядом стоит посмотреть?»",
+                "Могу рассчитать расходы и остаток бюджета, проверить лимиты и показать сохранённые места рядом.",
             isFromUser = false
         )
     ),
-    val isReplying: Boolean = false
+    val isReplying: Boolean = false,
+    val replyModeLabel: String = "Автономный режим"
 )
 
 class AssistantViewModel(application: Application) : AndroidViewModel(application) {
@@ -32,7 +34,7 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
     private val _uiState = MutableStateFlow(AssistantUiState())
     val uiState: StateFlow<AssistantUiState> = _uiState
 
-    /** Ограничиваем историю: достаточно последних реплик для контекста диалога. */
+    /** Последние реплики нужны серверной модели для контекста диалога. */
     private val historyDepth = 8
 
     fun sendMessage(text: String) {
@@ -47,18 +49,13 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
         _uiState.update { it.copy(messages = it.messages + userMessage, isReplying = true) }
 
         viewModelScope.launch {
-            val token = SessionStore.token.value
-            val reply = when {
-                !BackendApi.isConfigured ->
-                    "Защищённый ИИ пока не настроен: укажите BACKEND_BASE_URL при сборке " +
-                        "и настройте ключ YandexGPT только на сервере."
+            var replyMode = "Автономный режим"
+            val application = getApplication<Application>()
+            val sessionToken = SessionStore.token.value
 
-                token.isNullOrBlank() ->
-                    "Для работы ИИ войдите через Яндекс ID или VK ID в разделе входа. " +
-                        "Это создаст защищённую серверную сессию; остальные функции приложения работают и без неё."
-
-                else -> runCatching {
-                    val context = AssistantContext.build(getApplication())
+            val cloudResult = if (BackendApi.isConfigured && !sessionToken.isNullOrBlank()) {
+                runCatching {
+                    val systemPrompt = AssistantContext.build(application)
                     val history = _uiState.value.messages
                         .filterNot { it.id == "welcome" }
                         .takeLast(historyDepth)
@@ -68,13 +65,33 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
                                 text = message.text
                             )
                         }
-
-                    when (val result = BackendApi.askAssistant(token, context, history)) {
-                        is BackendResult.Success -> result.value
-                        is BackendResult.Failure -> "Не удалось получить ответ: ${result.message}"
-                    }
+                    BackendApi.askAssistant(sessionToken, systemPrompt, history)
                 }.getOrElse { error ->
-                    "Не удалось подготовить запрос: ${error.message ?: "неизвестная ошибка"}"
+                    BackendResult.Failure(error.message ?: "Серверный ИИ недоступен")
+                }
+            } else {
+                null
+            }
+
+            val reply = when (cloudResult) {
+                is BackendResult.Success -> {
+                    replyMode = "Облачный ИИ"
+                    cloudResult.value
+                }
+                is BackendResult.Failure -> {
+                    replyMode = "Автономный режим · сервер недоступен"
+                    val local = LocalAssistantEngine.reply(application, trimmed)
+                    "$local\n\nСейчас ответ сформирован локально: не удалось обратиться к серверному ИИ."
+                }
+                null -> {
+                    val local = LocalAssistantEngine.reply(application, trimmed)
+                    if (!BackendApi.isConfigured) {
+                        replyMode = "Автономный режим"
+                        local
+                    } else {
+                        replyMode = "Автономный режим · требуется вход"
+                        "$local\n\nДля свободного диалога войди через Яндекс ID или VK ID — после этого приложение сможет обратиться к настроенному серверному ИИ."
+                    }
                 }
             }
 
@@ -83,7 +100,13 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
                 text = reply,
                 isFromUser = false
             )
-            _uiState.update { it.copy(messages = it.messages + replyMessage, isReplying = false) }
+            _uiState.update {
+                it.copy(
+                    messages = it.messages + replyMessage,
+                    isReplying = false,
+                    replyModeLabel = replyMode
+                )
+            }
         }
     }
 }
