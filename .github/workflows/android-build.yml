@@ -27,7 +27,6 @@ jobs:
       - name: Create local.properties from GitHub Secrets
         env:
           MAPKIT_API_KEY: ${{ secrets.MAPKIT_API_KEY }}
-          RASP_API_KEY: ${{ secrets.RASP_API_KEY }}
           YANDEX_CLIENT_ID: ${{ secrets.YANDEX_CLIENT_ID }}
           VK_CLIENT_ID: ${{ secrets.VK_CLIENT_ID }}
           YANDEX_REDIRECT_URI: ${{ secrets.YANDEX_REDIRECT_URI }}
@@ -37,7 +36,6 @@ jobs:
         run: |
           {
             printf 'MAPKIT_API_KEY=%s\n' "$MAPKIT_API_KEY"
-            printf 'RASP_API_KEY=%s\n' "$RASP_API_KEY"
             printf 'YANDEX_CLIENT_ID=%s\n' "$YANDEX_CLIENT_ID"
             printf 'VK_CLIENT_ID=%s\n' "$VK_CLIENT_ID"
             printf 'YANDEX_REDIRECT_URI=%s\n' "$YANDEX_REDIRECT_URI"
