@@ -3,7 +3,7 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Calm, mindful assistant: halo, lotus leaves and a meditating figure. -->
+    <!-- LifeAssistant: a calm, mindful assistant represented by a halo, lotus leaves and a meditating figure. -->
     <!-- Outer halo -->
     <path
         android:fillColor="#00000000"
