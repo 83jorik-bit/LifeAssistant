@@ -6,8 +6,6 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
-import java.io.File
-import java.util.Properties
 import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
@@ -55,19 +53,9 @@ sealed class ScheduleResult {
  */
 object RaspRepository {
 
-    // Development compatibility only. Production API credentials should be kept server-side.
-    private val raspApiKey: String by lazy {
-        System.getenv("RASP_API_KEY")
-            ?: runCatching {
-                val configFile = File("local.properties")
-                if (configFile.exists()) {
-                    Properties().apply {
-                        configFile.inputStream().use { load(it) }
-                    }.getProperty("RASP_API_KEY")
-                } else null
-            }.getOrNull()
-            ?: ""
-    }
+    // Disabled until the API call is moved behind the server-side proxy.
+    // Do not store an account API key in a public/mobile app: APKs can be inspected.
+    private const val raspApiKey = ""
 
 
     /**
