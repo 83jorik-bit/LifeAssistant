@@ -3,23 +3,39 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!--
-        Адаптивная иконка: значимое изображение держим внутри центральных 72dp,
-        иначе система обрежет его на круглых и скруглённых масках.
-        Метка на карте — то, чем приложение занимается.
-    -->
-    <group android:translateX="18" android:translateY="18">
-        <!-- Тень-подложка под меткой -->
-        <path
-            android:fillColor="#1A000000"
-            android:pathData="M36,62m-13,0a13,4.5 0 1,0 26,0a13,4.5 0 1,0 -26,0" />
-        <!-- Метка -->
-        <path
-            android:fillColor="#FFFFFF"
-            android:pathData="M36,8C25.5,8 17,16.5 17,27c0,13.9 19,33 19,33s19,-19.1 19,-33C55,16.5 46.5,8 36,8z" />
-        <!-- Внутренний круг цвета приложения -->
-        <path
-            android:fillColor="#2E7D6B"
-            android:pathData="M36,27m-7.5,0a7.5,7.5 0 1,0 15,0a7.5,7.5 0 1,0 -15,0" />
-    </group>
+    <!-- Calm, mindful assistant: halo, lotus leaves and a meditating figure. -->
+    <!-- Outer halo -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#55A99B"
+        android:strokeWidth="2.8"
+        android:strokeLineCap="round"
+        android:pathData="M23,54 A31,31 0,0 1,85 54" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#F18C70"
+        android:strokeWidth="2.8"
+        android:strokeLineCap="round"
+        android:pathData="M54,23 A31,31 0,0 1,85 54" />
+    <path android:fillColor="#75BFA7" android:pathData="M54,18m-4.2,0a4.2,4.2 0,1 0,8.4 0a4.2,4.2 0,1 0,-8.4 0" />
+    <path android:fillColor="#2E8D83" android:pathData="M23,54m-3.5,0a3.5,3.5 0,1 0,7 0a3.5,3.5 0,1 0,-7 0" />
+    <path android:fillColor="#F18C70" android:pathData="M85,54m-3.5,0a3.5,3.5 0,1 0,7 0a3.5,3.5 0,1 0,-7 0" />
+    <!-- Lotus leaves -->
+    <path android:fillColor="#287F73" android:pathData="M54,83 C42,78 29,68 26,54 C39,59 48,67 54,83 Z" />
+    <path android:fillColor="#83B97D" android:pathData="M54,83 C66,78 79,68 82,54 C69,59 60,67 54,83 Z" />
+    <path android:fillColor="#F18C70" android:pathData="M54,84 C46,77 43,69 44,62 C51,66 54,73 54,84 Z" />
+    <path android:fillColor="#F18C70" android:pathData="M54,84 C62,77 65,69 64,62 C57,66 54,73 54,84 Z" />
+    <!-- Crossed legs -->
+    <path android:fillColor="#F6E7CC" android:pathData="M50,76 C43,72 33,72 28,77 C24,81 29,85 38,85 L53,82 Z" />
+    <path android:fillColor="#F6E7CC" android:pathData="M58,76 C65,72 75,72 80,77 C84,81 79,85 70,85 L55,82 Z" />
+    <path android:fillColor="#D8E5D4" android:pathData="M36,79 C43,76 49,78 54,81 C59,78 65,76 72,79 C65,84 59,86 54,86 C49,86 43,84 36,79 Z" />
+    <!-- Body and shoulders -->
+    <path android:fillColor="#F7EBD6" android:pathData="M42,55 C43,51 47,49 50,49 L58,49 C62,49 65,52 66,56 L72,73 C66,78 60,80 54,80 C48,80 42,78 36,73 Z" />
+    <!-- Head and flowing hair -->
+    <path android:fillColor="#176A68" android:pathData="M39,43 C36,31 43,24 54,24 C65,24 72,32 69,44 L66,54 C63,49 63,42 64,37 C58,40 49,39 43,36 C44,44 43,49 41,54 Z" />
+    <path android:fillColor="#F7EBD6" android:pathData="M43,35 C46,31 50,30 54,30 C60,30 64,34 64,40 C64,47 60,52 54,53 C48,52 43,47 43,40 Z" />
+    <!-- Closed eyes -->
+    <path android:fillColor="#00000000" android:strokeColor="#176A68" android:strokeWidth="1.4" android:strokeLineCap="round" android:pathData="M47,41 Q50,44 53,41 M56,41 Q59,44 62,41" />
+    <!-- Small calm glow -->
+    <path android:fillColor="#FFFFFF" android:fillAlpha="0.72" android:pathData="M54,15m-1.1,0a1.1,1.1 0,1 0,2.2 0a1.1,1.1 0,1 0,-2.2 0" />
 </vector>
