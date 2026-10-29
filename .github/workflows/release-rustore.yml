@@ -111,6 +111,7 @@ jobs:
         run: gradle bundleRelease assembleRelease
 
       - name: Verify release signing
+        if: ${{ inputs.publish }}
         shell: bash
         run: |
           APK=app/build/outputs/apk/release/app-release.apk
