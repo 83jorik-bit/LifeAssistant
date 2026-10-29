@@ -43,8 +43,10 @@ object BackendApi {
     suspend fun login(provider: String, providerAccessToken: String): BackendResult<String> =
         withContext(Dispatchers.IO) {
             runCatching {
-                val body = JSONObject().put("accessToken", providerAccessToken)
-                val response = request("POST", "/api/auth/$provider", null, body.toString())
+                val body = JSONObject()
+                    .put("provider", provider)
+                    .put("accessToken", providerAccessToken)
+                val response = request("POST", "/api/auth/login", null, body.toString())
                 val token = JSONObject(response).getString("token")
                 BackendResult.Success(token)
             }.getOrElse { e -> BackendResult.Failure(e.message ?: "Не удалось войти на сервере") }
