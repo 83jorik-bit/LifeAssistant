@@ -508,7 +508,7 @@ RuStore сказано, что параметр `companyId` для автори�
    в настройках VK ID.
 2. **Добавить секреты репозитория** (Settings → Secrets and variables → Actions):
    `RELEASE_KEYSTORE_BASE64`, `RELEASE_STORE_PASSWORD`, `RELEASE_KEY_ALIAS`,
-   `RELEASE_KEY_PASSWORD` (плюс уже добавленные `MAPKIT_API_KEY` и `RASP_API_KEY`).
+   `RELEASE_KEY_PASSWORD` (плюс `MAPKIT_API_KEY`, если нужен для карты).
 3. **Запустить workflow** «Release for RuStore», указав версию, и скачать артефакты.
 4. **Зарегистрироваться в RuStore Консоли**, создать приложение и загрузить AAB или APK.
 5. **Подготовить для карточки**: иконка 512×512, скриншоты, описание, возрастной рейтинг.
@@ -728,7 +728,6 @@ MapKit не отдаёт: для остановок-топонимов он во
 2. Впишите туда свои ключи:
    ```
    MAPKIT_API_KEY=ваш-ключ-здесь
-   RASP_API_KEY=ваш-ключ-расписаний
    ```
 3. Пересоберите проект (Build → Rebuild Project в Android Studio)
 
