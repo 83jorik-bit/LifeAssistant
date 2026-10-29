@@ -5,8 +5,8 @@
 # MapKit mobile SDK key: restrict it in the provider console to this app/package where possible.
 MAPKIT_API_KEY=your-restricted-mapkit-key
 
-# Yandex Rasp API: do not put production keys in the APK; use a backend proxy.
-RASP_API_KEY=
+# Yandex Rasp API credentials belong on the backend; the mobile client is disabled
+# until a secure proxy is configured.
 
 # OAuth client IDs are public application identifiers, not client secrets.
 YANDEX_CLIENT_ID=
