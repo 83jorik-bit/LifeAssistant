@@ -62,8 +62,8 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Create local.properties with API keys
-        run: |
+      - name: Create local.properties from GitHub Secrets
+        env:
           MAPKIT_API_KEY: ${{ secrets.MAPKIT_API_KEY }}
           RASP_API_KEY: ${{ secrets.RASP_API_KEY }}
           YANDEX_CLIENT_ID: ${{ secrets.YANDEX_CLIENT_ID }}
