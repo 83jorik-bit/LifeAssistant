@@ -1,23 +1,25 @@
-# Copy to local.properties on your own computer. local.properties is ignored by Git.
-# Values placed into Android BuildConfig can be extracted from the APK; do not put
-# server-only API keys or signing passwords in Android app configuration.
-MAPKIT_API_KEY=your-restricted-mapkit-key
-RASP_API_KEY=your-yandex-rasp-key
+# Copy to local.properties on your development computer; Git ignores that file.
+# Any value compiled into Android BuildConfig or resources can be extracted from the APK.
+# Never put server-only credentials or release signing passwords into mobile configuration.
 
-# OAuth client IDs are identifiers, not client secrets.
+# MapKit mobile SDK key: restrict it in the provider console to this app/package where possible.
+MAPKIT_API_KEY=your-restricted-mapkit-key
+
+# Yandex Rasp API: do not put production keys in the APK; use a backend proxy.
+RASP_API_KEY=
+
+# OAuth client IDs are public application identifiers, not client secrets.
 YANDEX_CLIENT_ID=
 VK_CLIENT_ID=
 YANDEX_REDIRECT_URI=
 
-# Optional backend base URL. Server-side API credentials belong on the server only.
+# Optional backend URL. Keep server API credentials on the backend only.
 BACKEND_BASE_URL=
 
 # YandexGPT folder/catalog ID is not a credential.
 YANDEX_GPT_FOLDER_ID=
 
-# Local release signing: keep the keystore and passwords outside Git.
-# Prefer setting RELEASE_STORE_FILE, RELEASE_STORE_PASSWORD, RELEASE_KEY_ALIAS,
-# and RELEASE_KEY_PASSWORD as environment variables.
+# Release signing; keep the file and passwords outside Git.
 RELEASE_STORE_FILE=/absolute/path/to/release.keystore
 RELEASE_STORE_PASSWORD=
 RELEASE_KEY_ALIAS=lifenavigator
