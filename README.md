@@ -57,8 +57,8 @@ base64-содержимое keystore или приватные ключи RuStor
 может быть извлечено из APK. OAuth client IDs — публичные идентификаторы; мобильный ключ
 MapKit тоже может быть виден, поэтому его нужно ограничивать настройками провайдера.
 Ключи YandexGPT и Яндекс Расписаний в производственной сборке должны находиться на сервере,
-а приложение должно обращаться к собственному backend. Прямой вызов YandexGPT сейчас
-отключён до настройки серверного прокси.
+а приложение должно обращаться к собственному backend. Прямой вызов YandexGPT и прямые запросы
+к API Расписаний с ключом из APK отключены до настройки серверного прокси.
 
 ### Секреты GitHub Actions
 
@@ -66,7 +66,7 @@ MapKit тоже может быть виден, поэтому его нужно
 
 - `RELEASE_KEYSTORE_BASE64`, `RELEASE_STORE_PASSWORD`, `RELEASE_KEY_ALIAS`, `RELEASE_KEY_PASSWORD` — релизная подпись;
 - `RUSTORE_KEY_ID`, `RUSTORE_PRIVATE_KEY` — API RuStore;
-- `MAPKIT_API_KEY` — ограниченный ключ MapKit для CI;
+- `MAPKIT_API_KEY` — ограниченный ключ MapKit для CI (всё равно виден в APK);
 - при необходимости `YANDEX_CLIENT_ID`, `VK_CLIENT_ID`, `YANDEX_REDIRECT_URI`, `BACKEND_BASE_URL`, `YANDEX_GPT_FOLDER_ID`.
 
 Никогда не выводите значения секретов в логи. Workflow публикации удаляет временные файлы
