@@ -161,6 +161,8 @@ https://yandex.ru/dev/commercial/doc/ru/concepts/mapkit — там же уточ
 
 ### Настройка серверного прокси
 
+Для запуска собственного Node.js-сервера через Docker см. `server/DEPLOYMENT.md` и корневой `docker-compose.yml`.
+
 На сервере (не в `local.properties` и не в GitHub Actions Android-сборки) задайте
 переменные окружения:
 

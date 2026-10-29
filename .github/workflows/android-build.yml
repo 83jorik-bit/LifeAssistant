@@ -49,8 +49,10 @@ jobs:
 
       - name: Validate backend JavaScript syntax
         run: |
-          node --check server/src/index.js
-          node --check server/src/routes/assistant.js
+          for file in server/src/*.js server/src/routes/*.js; do
+            echo "Checking $file"
+            node --check "$file"
+          done
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4

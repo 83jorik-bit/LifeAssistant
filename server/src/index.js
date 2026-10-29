@@ -17,7 +17,13 @@ const app = express();
 app.use(express.json({ limit: '1mb' }));
 app.use(cors());
 
-app.get('/health', (req, res) => res.json({ ok: true }));
+// This health response reveals only whether the assistant is configured, never credential values.
+app.get('/health', (req, res) => res.json({
+  ok: true,
+  assistantConfigured: Boolean(
+    process.env.YANDEX_GPT_API_KEY?.trim() && process.env.YANDEX_GPT_FOLDER_ID?.trim()
+  )
+}));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/profile', profileRoutes);
