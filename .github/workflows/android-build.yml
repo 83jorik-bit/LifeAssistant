@@ -56,6 +56,8 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.7"
+          # The repository owner can warm this PR's cache; fork PRs stay read-only.
+          cache-read-only: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
 
       - name: Build debug APK
         run: gradle assembleDebug
