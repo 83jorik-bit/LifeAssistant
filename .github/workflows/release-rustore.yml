@@ -1,52 +1,32 @@
 name: Release for RuStore
 
-# Собирает ПОДПИСАННЫЕ релизные артефакты для загрузки в RuStore.
-# Запускается вручную: указываете номер версии — получаете AAB и APK.
-#
-# Перед первым запуском добавьте в секреты репозитория
-# (Settings → Secrets and variables → Actions):
-#   MAPKIT_API_KEY           — ключ Яндекс MapKit
-#   RASP_API_KEY             — ключ API Яндекс Расписаний
-#   RELEASE_KEYSTORE_BASE64  — релизный keystore, закодированный в base64
-#   RELEASE_STORE_PASSWORD   — пароль хранилища
-#   RELEASE_KEY_ALIAS        — алиас ключа
-#   RELEASE_KEY_PASSWORD     — пароль ключа
-#
-# Для автоматической загрузки в RuStore дополнительно:
-#   RUSTORE_KEY_ID           — числовой ID ключа из таблицы ключей в RuStore Консоли
-#                              (именно ID, а не название ключа)
-#   RUSTORE_PRIVATE_KEY      — приватный ключ, выданный при создании пары в Консоли
-#
-# Keystore в base64 получается так:
-#   Windows PowerShell:
-#     [Convert]::ToBase64String([IO.File]::ReadAllBytes("release.keystore")) > keystore.txt
-#   Linux/macOS:
-#     base64 -w0 release.keystore > keystore.txt
-
 on:
   workflow_dispatch:
     inputs:
       version_code:
-        description: 'versionCode (целое число, должно расти с каждой публикацией)'
+        description: 'versionCode (integer; must increase for every release)'
         required: true
         default: '1'
       version_name:
-        description: 'versionName (например 1.0.0)'
+        description: 'versionName, for example 1.0.0'
         required: true
         default: '1.0.0'
       publish:
-        description: 'Загрузить сборку в RuStore Консоль как черновик'
+        description: 'Upload the built package to RuStore as a draft'
         type: boolean
         default: false
       artifact_type:
-        description: 'Что загружать: apk проще для первой публикации, aab требует ключа подписи в Консоли'
+        description: 'Package to upload'
         type: choice
         options: [apk, aab]
         default: apk
       send_to_moderation:
-        description: 'Отправить черновик на модерацию (публикация для пользователей!)'
+        description: 'Submit the draft for moderation/publication'
         type: boolean
         default: false
+
+permissions:
+  contents: read
 
 jobs:
   release:
@@ -61,45 +41,29 @@ jobs:
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
-          distribution: 'temurin'
-          java-version: '17'
+          distribution: temurin
+          java-version: "17"
 
-      - name: Create local.properties from GitHub Secrets
+      - name: Validate required release secrets
+        if: ${{ inputs.publish }}
         env:
-          MAPKIT_API_KEY: ${{ secrets.MAPKIT_API_KEY }}
-          RASP_API_KEY: ${{ secrets.RASP_API_KEY }}
-          YANDEX_CLIENT_ID: ${{ secrets.YANDEX_CLIENT_ID }}
-          VK_CLIENT_ID: ${{ secrets.VK_CLIENT_ID }}
-          YANDEX_REDIRECT_URI: ${{ secrets.YANDEX_REDIRECT_URI }}
-          BACKEND_BASE_URL: ${{ secrets.BACKEND_BASE_URL }}
-          YANDEX_GPT_FOLDER_ID: ${{ secrets.YANDEX_GPT_FOLDER_ID }}
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+          RUSTORE_KEY_ID: ${{ secrets.RUSTORE_KEY_ID }}
+          RUSTORE_PRIVATE_KEY: ${{ secrets.RUSTORE_PRIVATE_KEY }}
         shell: bash
         run: |
-          {
-            printf 'MAPKIT_API_KEY=%s\n' "$MAPKIT_API_KEY"
-            printf 'RASP_API_KEY=%s\n' "$RASP_API_KEY"
-            printf 'YANDEX_CLIENT_ID=%s\n' "$YANDEX_CLIENT_ID"
-            printf 'VK_CLIENT_ID=%s\n' "$VK_CLIENT_ID"
-            printf 'YANDEX_REDIRECT_URI=%s\n' "$YANDEX_REDIRECT_URI"
-            printf 'BACKEND_BASE_URL=%s\n' "$BACKEND_BASE_URL"
-            printf 'YANDEX_GPT_FOLDER_ID=%s\n' "$YANDEX_GPT_FOLDER_ID"
-          } > local.properties
-
-      # Без подписи RuStore файл не примет, а сборка при отсутствии секретов
-      # молча выходит неподписанной. Лучше остановиться здесь с понятным текстом.
-      - name: Check release signing secrets
-        if: ${{ inputs.publish }}
-        run: |
           missing=""
-          [ -z "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" ] && missing="$missing RELEASE_KEYSTORE_BASE64"
-          [ -z "${{ secrets.RELEASE_STORE_PASSWORD }}" ] && missing="$missing RELEASE_STORE_PASSWORD"
-          [ -z "${{ secrets.RELEASE_KEY_ALIAS }}" ] && missing="$missing RELEASE_KEY_ALIAS"
-          [ -z "${{ secrets.RUSTORE_KEY_ID }}" ] && missing="$missing RUSTORE_KEY_ID"
-          [ -z "${{ secrets.RUSTORE_PRIVATE_KEY }}" ] && missing="$missing RUSTORE_PRIVATE_KEY"
-          [ -z "${{ secrets.RELEASE_KEY_PASSWORD }}" ] && missing="$missing RELEASE_KEY_PASSWORD"
+          [ -z "$RELEASE_KEYSTORE_BASE64" ] && missing="$missing RELEASE_KEYSTORE_BASE64"
+          [ -z "$RELEASE_STORE_PASSWORD" ] && missing="$missing RELEASE_STORE_PASSWORD"
+          [ -z "$RELEASE_KEY_ALIAS" ] && missing="$missing RELEASE_KEY_ALIAS"
+          [ -z "$RELEASE_KEY_PASSWORD" ] && missing="$missing RELEASE_KEY_PASSWORD"
+          [ -z "$RUSTORE_KEY_ID" ] && missing="$missing RUSTORE_KEY_ID"
+          [ -z "$RUSTORE_PRIVATE_KEY" ] && missing="$missing RUSTORE_PRIVATE_KEY"
           if [ -n "$missing" ]; then
-            echo "Не заданы секреты релизной подписи:$missing"
-            echo "Без них сборка будет неподписанной, и RuStore её отклонит."
+            echo "Missing required GitHub Secrets:$missing" >&2
             exit 1
           fi
 
@@ -111,10 +75,30 @@ jobs:
           printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > release.keystore
           chmod 600 release.keystore
 
+      - name: Configure non-secret application values
+        env:
+          MAPKIT_API_KEY: ${{ secrets.MAPKIT_API_KEY }}
+          YANDEX_CLIENT_ID: ${{ secrets.YANDEX_CLIENT_ID }}
+          VK_CLIENT_ID: ${{ secrets.VK_CLIENT_ID }}
+          YANDEX_REDIRECT_URI: ${{ secrets.YANDEX_REDIRECT_URI }}
+          BACKEND_BASE_URL: ${{ secrets.BACKEND_BASE_URL }}
+          YANDEX_GPT_FOLDER_ID: ${{ secrets.YANDEX_GPT_FOLDER_ID }}
+        shell: bash
+        run: |
+          {
+            printf 'MAPKIT_API_KEY=%s\n' "$MAPKIT_API_KEY"
+            printf 'YANDEX_CLIENT_ID=%s\n' "$YANDEX_CLIENT_ID"
+            printf 'VK_CLIENT_ID=%s\n' "$VK_CLIENT_ID"
+            printf 'YANDEX_REDIRECT_URI=%s\n' "$YANDEX_REDIRECT_URI"
+            printf 'BACKEND_BASE_URL=%s\n' "$BACKEND_BASE_URL"
+            printf 'YANDEX_GPT_FOLDER_ID=%s\n' "$YANDEX_GPT_FOLDER_ID"
+          } > local.properties
+          chmod 600 local.properties
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.7'
+          gradle-version: "8.7"
 
       - name: Build signed AAB and APK
         env:
@@ -126,21 +110,20 @@ jobs:
           VERSION_NAME: ${{ inputs.version_name }}
         run: gradle bundleRelease assembleRelease
 
-      # Показываем, чем подписана сборка. Отпечаток должен совпадать с тем,
-      # что вы видели при создании ключа, и он же нужен в настройках VK ID.
-      - name: Show signing certificate
+      - name: Verify release signing
+        shell: bash
         run: |
           APK=app/build/outputs/apk/release/app-release.apk
-          if unzip -l "$APK" | grep -qiE "META-INF/.*\.(RSA|DSA|EC)$"; then
-            echo "Сборка подписана. Отпечаток сертификата:"
-            "$JAVA_HOME/bin/keytool" -printcert -jarfile "$APK" | grep -iE "SHA256|Owner" || true
-          else
-            echo "ВНИМАНИЕ: сборка не подписана — проверьте секреты RELEASE_*."
+          if ! unzip -l "$APK" | grep -qiE "META-INF/.*\.(RSA|DSA|EC)$"; then
+            echo "Release APK appears unsigned; refusing to publish." >&2
+            exit 1
           fi
+          "$JAVA_HOME/bin/keytool" -printcert -jarfile "$APK" | grep -iE "SHA256|Owner"
 
       - name: Publish to RuStore
         if: ${{ inputs.publish }}
         env:
+          GH_TOKEN: ${{ github.token }}
           RUSTORE_KEY_ID: ${{ secrets.RUSTORE_KEY_ID }}
           RUSTORE_PRIVATE_KEY: ${{ secrets.RUSTORE_PRIVATE_KEY }}
           PACKAGE_NAME: com.lifenavigator.app
@@ -149,19 +132,17 @@ jobs:
           SEND_TO_MODERATION: ${{ inputs.send_to_moderation }}
         run: bash scripts/rustore-publish.sh
 
+      - name: Upload artifacts for RuStore
+        uses: actions/upload-artifact@v4
+        with:
+          retention-days: 3
+          name: rustore-release-${{ inputs.version_name }}
+          path: |
+            app/build/outputs/bundle/release/app-release.aab
+            app/build/outputs/apk/release/app-release.apk
+
       - name: Remove temporary secrets from runner
         if: always()
         shell: bash
         run: |
           rm -f release.keystore private_key.pem local.properties
-          find . -maxdepth 3 -type f \( -name '*.pem' -o -name '*.p12' -o -name '*.pfx' \) -delete
-
-      - name: Upload artifacts for RuStore
-        uses: actions/upload-artifact@v4
-        with:
-          # Релизные файлы храним дольше отладочных, но не 90 дней по умолчанию: хранилище бесплатного тарифа (500 МБ) не сбрасывается ежемесячно, в отличие от минут.
-          retention-days: 14
-          name: rustore-release-${{ inputs.version_name }}
-          path: |
-            app/build/outputs/bundle/release/app-release.aab
-            app/build/outputs/apk/release/app-release.apk
