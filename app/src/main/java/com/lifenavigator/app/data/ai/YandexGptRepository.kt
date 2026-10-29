@@ -1,8 +1,6 @@
 package com.lifenavigator.app.data.ai
 
 import com.lifenavigator.app.BuildConfig
-import java.util.Properties
-import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
