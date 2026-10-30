@@ -61,6 +61,10 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.LifeNavigator">
 
+        <receiver
+            android:name=".data.local.TaskReminderReceiver"
+            android:exported="false" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
