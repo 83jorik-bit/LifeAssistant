@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.lifenavigator.app.data.ai.AssistantContext
 import com.lifenavigator.app.data.ai.GptMessage
 import com.lifenavigator.app.data.ai.LocalAssistantEngine
+import com.lifenavigator.app.data.ai.VoiceCommandDispatcher
 import com.lifenavigator.app.data.ai.YandexGptRepository
 import com.lifenavigator.app.data.ai.GptResult
 import com.lifenavigator.app.data.backend.BackendApi
@@ -129,53 +130,52 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
             val application = getApplication<Application>()
             val sessionToken = SessionStore.token.value
 
-            val cloudResult = if (!LocalAssistantEngine.isTaskCommand(trimmed)) {
-                val systemPrompt = AssistantContext.build(application)
-                val history = _uiState.value.messages
-                    .filterNot { it.id == "welcome" }
-                    .takeLast(historyDepth)
-                    .map { message ->
-                        GptMessage(
-                            role = if (message.isFromUser) "user" else "assistant",
-                            text = message.text
-                        )
-                    }
-
-                // Для тестирования используем прямой Yandex Cloud API, если ключ
-                // передан через GitHub Actions secret. Это временный режим: ключ
-                // окажется внутри APK и после тестов должен быть отозван/заменён.
-                if (YandexGptRepository.isConfigured) {
+            // Сначала исполняем поддерживаемые действия через реальные модули приложения.
+            // YandexGPT используется для понимания/диалога, но не может заявить об изменении данных.
+            val actionResult = runCatching { VoiceCommandDispatcher.dispatch(application, trimmed) }
+            val reply: String
+            var replyMode = "Автономный режим"
+            if (actionResult.isFailure) {
+                reply = "Не удалось выполнить действие: ${actionResult.exceptionOrNull()?.message ?: "неизвестная ошибка"}. Данные приложения не подтверждены."
+            } else if (actionResult.getOrNull() != null) {
+                reply = actionResult.getOrNull()!!
+                replyMode = "Функция приложения"
+            } else {
+                val cloudResult = if (YandexGptRepository.isConfigured) {
+                    val systemPrompt = AssistantContext.build(application)
+                    val history = _uiState.value.messages
+                        .filterNot { it.id == "welcome" }
+                        .takeLast(historyDepth)
+                        .map { message ->
+                            GptMessage(
+                                role = if (message.isFromUser) "user" else "assistant",
+                                text = message.text
+                            )
+                        }
                     when (val result = YandexGptRepository.ask(systemPrompt, history)) {
                         is GptResult.Success -> BackendResult.Success(result.text)
                         is GptResult.Failure -> BackendResult.Failure(result.message)
                     }
                 } else if (BackendApi.isConfigured && !sessionToken.isNullOrBlank()) {
-                    BackendApi.askAssistant(sessionToken, systemPrompt, history)
-                } else {
-                    null
-                }
-            } else {
-                null
-            }
+                    BackendApi.askAssistant(sessionToken, AssistantContext.build(application), _uiState.value.messages
+                        .filterNot { it.id == "welcome" }
+                        .takeLast(historyDepth)
+                        .map { message -> GptMessage(role = if (message.isFromUser) "user" else "assistant", text = message.text) })
+                } else null
 
-            val reply = when (cloudResult) {
-                is BackendResult.Success -> {
-                    replyMode = "Облачный ИИ"
-                    cloudResult.value
-                }
-                is BackendResult.Failure -> {
-                    replyMode = "Автономный режим · сервер недоступен"
-                    val local = LocalAssistantEngine.reply(application, trimmed)
-                    "$local\n\nСейчас ответ сформирован локально: не удалось обратиться к серверному ИИ."
-                }
-                null -> {
-                    val local = LocalAssistantEngine.reply(application, trimmed)
-                    if (!BackendApi.isConfigured && !YandexGptRepository.isConfigured) {
+                reply = when (cloudResult) {
+                    is BackendResult.Success -> {
+                        replyMode = "Облачный ИИ"
+                        cloudResult.value
+                    }
+                    is BackendResult.Failure -> {
+                        replyMode = "Автономный режим · сервер недоступен"
+                        LocalAssistantEngine.reply(application, trimmed) +
+                            "\\n\\nНе удалось обратиться к облачному ИИ. Никакие действия в приложении не выполнялись."
+                    }
+                    null -> {
                         replyMode = "Автономный режим"
-                        local
-                    } else {
-                        replyMode = "Автономный режим · требуется вход"
-                        "$local\n\nДля свободного диалога войди через Яндекс ID или VK ID — после этого приложение сможет обратиться к настроенному серверному ИИ."
+                        LocalAssistantEngine.reply(application, trimmed)
                     }
                 }
             }
