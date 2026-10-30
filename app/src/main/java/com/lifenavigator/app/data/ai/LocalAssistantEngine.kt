@@ -25,7 +25,7 @@ object LocalAssistantEngine {
         val taskStorage = TaskStorage(context)
         val taskItems = taskStorage.load()
 
-        if (listOf("мои задачи", "список задач", "что по задачам", "какие задачи", "что мне нужно сделать", "что осталось сделать").any(question::contains)) {
+        if (listOf("мои задачи", "список задач", "что по задачам", "какие задачи", "что мне нужно сделать", "что осталось сделать", "план на день", "что сегодня", "есть ли просроченные").any(question::contains)) {
             val active = taskItems.filterNot { it.isCompleted }
             if (active.isEmpty()) return "Активных задач пока нет. Если появится поручение, просто скажи: «Добавь задачу…»."
             val overdue = active.filter { it.dueAtEpochMillis != null && it.dueAtEpochMillis < System.currentTimeMillis() }
@@ -48,11 +48,11 @@ object LocalAssistantEngine {
         ).any(question::contains)
         if (taskCreationCue) {
             var title = userText.trim()
-                .replace(Regex("(?i)^\\\\s*(добавь задачу|создай задачу|запиши задачу|напомни мне|напомни|не забудь|надо сделать|нужно сделать|мне нужно|мне надо)\\\\s*"), "")
+                .replace(Regex("(?i)^\\s*(добавь задачу|создай задачу|запиши задачу|напомни мне|напомни|не забудь|надо сделать|нужно сделать|мне нужно|мне надо)\\s*"), "")
                 .trim()
+                .replace("послезавтра", "").replace("завтра", "").replace("сегодня", "")
                 .trimStart(':', ',', '-', ' ')
             if (title.isBlank()) return "Что именно нужно добавить в задачи?"
-            val now = System.currentTimeMillis()
             val dueAt = when {
                 "послезавтра" in question -> java.time.LocalDate.now().plusDays(2).atTime(9, 0).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
                 "завтра" in question -> java.time.LocalDate.now().plusDays(1).atTime(9, 0).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
