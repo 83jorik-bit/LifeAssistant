@@ -28,6 +28,7 @@ import com.lifenavigator.app.ui.navigation.Destination
 import com.lifenavigator.app.ui.navigation.bottomNavItems
 import com.lifenavigator.app.ui.screens.assistant.AssistantScreen
 import com.lifenavigator.app.ui.screens.budget.BudgetScreen
+import com.lifenavigator.app.ui.screens.calendar.CalendarScreen
 import com.lifenavigator.app.ui.screens.map.MapScreen
 import com.lifenavigator.app.ui.screens.subscriptions.SubscriptionsScreen
 import com.lifenavigator.app.ui.screens.tasks.TasksScreen
@@ -113,6 +114,7 @@ fun LifeNavigatorApp() {
             composable(Destination.MapScreen.route) { MapScreen() }
             composable(Destination.BudgetScreen.route) { BudgetScreen() }
             composable(Destination.TasksScreen.route) { TasksScreen() }
+            composable(Destination.CalendarScreen.route) { CalendarScreen() }
             composable(Destination.SubscriptionsScreen.route) { SubscriptionsScreen() }
             composable(Destination.AssistantScreen.route) { AssistantScreen() }
         }
