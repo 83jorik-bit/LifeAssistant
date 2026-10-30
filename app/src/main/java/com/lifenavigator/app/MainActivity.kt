@@ -30,14 +30,10 @@ import com.lifenavigator.app.ui.screens.assistant.AssistantScreen
 import com.lifenavigator.app.ui.screens.budget.BudgetScreen
 import com.lifenavigator.app.ui.screens.map.MapScreen
 import com.lifenavigator.app.ui.screens.subscriptions.SubscriptionsScreen
+import com.lifenavigator.app.ui.screens.tasks.TasksScreen
 import com.lifenavigator.app.ui.theme.LifeNavigatorTheme
 
 class MainActivity : ComponentActivity() {
-
-    /**
-     * Активность объявлена как singleTask, поэтому возврат из браузера приходит сюда,
-     * а не создаёт новый экземпляр. Передаём ссылку экрану входа.
-     */
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handleAuthRedirect(intent)
@@ -45,20 +41,11 @@ class MainActivity : ComponentActivity() {
 
     private fun handleAuthRedirect(intent: Intent?) {
         val data = intent?.data ?: return
-        // "lifenavigator" — наш адрес для Яндекса. "vk..." — фиксированная схема VK ID
-        // (vk{clientId}://vk.ru/blank.html), у нас на неё отдельный intent-filter в манифесте.
         if (data.scheme == "lifenavigator" || data.scheme?.startsWith("vk") == true) {
             PkceOAuthClient.redirect.value = data
         }
     }
 
-    /**
-     * Жизненный цикл MapKit ведётся на уровне активности, как советует документация
-     * Яндекса. Раньше его запускал и останавливал экран карты — и при уходе с вкладки
-     * карты MapKit останавливался целиком. Пока карта была главным экраном, это не
-     * мешало, но теперь поиском пользуется и бюджет (сопоставление трат с магазинами),
-     * а он живёт на другой вкладке и с остановленным MapKit просто не получал бы ответ.
-     */
     override fun onStart() {
         super.onStart()
         MapKitFactory.getInstance().onStart()
@@ -75,8 +62,6 @@ class MainActivity : ComponentActivity() {
         LocalProfileStore.load(this)
         ConsentStore.load(this)
         SessionStore.load(this)
-        // После обновления приложения Android иногда не подключает слушатель
-        // уведомлений заново — доступ выдан, а уведомления не приходят.
         BankNotificationListener.requestRebindIfAllowed(this)
         handleAuthRedirect(intent)
         setContent {
@@ -96,13 +81,11 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun LifeNavigatorApp() {
     val navController = rememberNavController()
-
     Scaffold(
         bottomBar = {
             NavigationBar {
                 val navBackStackEntry by navController.currentBackStackEntryAsState()
                 val currentRoute = navBackStackEntry?.destination?.route
-
                 bottomNavItems.forEach { destination ->
                     NavigationBarItem(
                         selected = currentRoute == destination.route,
@@ -129,6 +112,7 @@ fun LifeNavigatorApp() {
         ) {
             composable(Destination.MapScreen.route) { MapScreen() }
             composable(Destination.BudgetScreen.route) { BudgetScreen() }
+            composable(Destination.TasksScreen.route) { TasksScreen() }
             composable(Destination.SubscriptionsScreen.route) { SubscriptionsScreen() }
             composable(Destination.AssistantScreen.route) { AssistantScreen() }
         }
