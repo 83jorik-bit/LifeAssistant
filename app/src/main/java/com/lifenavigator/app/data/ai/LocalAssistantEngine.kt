@@ -4,6 +4,7 @@ import android.content.Context
 import com.lifenavigator.app.data.local.BudgetStorage
 import com.lifenavigator.app.data.local.PlacesCache
 import com.lifenavigator.app.data.local.TaskStorage
+import com.lifenavigator.app.data.local.TaskReminderScheduler
 import com.lifenavigator.app.data.model.TaskPriority
 import com.lifenavigator.app.data.model.NeedCategory
 import java.time.LocalDate
@@ -60,6 +61,7 @@ object LocalAssistantEngine {
             }
             val priority = if (listOf("срочно", "важно", "обязательно").any(question::contains)) TaskPriority.HIGH else TaskPriority.NORMAL
             val task = taskStorage.add(title, dueAt = dueAt, reminderAt = dueAt, priority = priority)
+            TaskReminderScheduler.schedule(context, task)
             val dueText = dueAt?.let {
                 " Срок поставил: " + java.text.SimpleDateFormat("dd.MM HH:mm", Locale.getDefault()).format(java.util.Date(it)) + "."
             } ?: ""
