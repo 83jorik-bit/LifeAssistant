@@ -30,7 +30,7 @@ object YandexGptRepository {
 
     // API credentials must not be bundled in an APK. This client remains disabled
     // until a server-side proxy is configured; never place the secret in BuildConfig.
-    private val apiKey: String get() = ""
+    private val apiKey: String get() = BuildConfig.YANDEX_GPT_API_KEY
 
 
     private const val URL_COMPLETION = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
@@ -50,7 +50,7 @@ object YandexGptRepository {
         withContext(Dispatchers.IO) {
             if (!isConfigured) {
                 return@withContext GptResult.Failure(
-                    "Облачный помощник временно отключён до настройки защищённого серверного прокси."
+                    "YandexGPT не настроен: проверьте секреты YANDEX_GPT_API_KEY и YANDEX_GPT_FOLDER_ID в GitHub Actions."
                 )
             }
 
