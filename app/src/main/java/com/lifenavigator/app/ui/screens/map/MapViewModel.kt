@@ -11,6 +11,8 @@ import com.lifenavigator.app.data.repository.RaspRepository
 import com.lifenavigator.app.data.repository.ScheduleResult
 import com.lifenavigator.app.data.repository.YandexSearchRepository
 import com.yandex.mapkit.geometry.Point
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -60,6 +62,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(MapUiState())
     val uiState: StateFlow<MapUiState> = _uiState
+    private var placesSearchJob: Job? = null
 
     init {
         // Никаких выдуманных данных на старте: показываем список из прошлого сеанса.
@@ -150,28 +153,47 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         // Запоминаем точку для бюджета: он ищет магазины из трат рядом с ней.
         settings.lastUserLatitude = userPoint.latitude
         settings.lastUserLongitude = userPoint.longitude
-        viewModelScope.launch {
+        // A fresh location/category/radius request supersedes the previous batch.
+        // Without cancellation, rapid navigation and filter changes can leave many
+        // MapKit Search sessions alive at the same time.
+        placesSearchJob?.cancel()
+        placesSearchJob = viewModelScope.launch {
             _uiState.update { it.copy(isRefreshingRealData = true, userPoint = userPoint) }
-            val radius = _uiState.value.searchRadiusMeters
+            try {
+                val snapshot = _uiState.value
+                val radius = snapshot.searchRadiusMeters
+                val results = snapshot.searchCategories
+                    .map { category ->
+                        async {
+                            runCatching {
+                                YandexSearchRepository.searchCategory(userPoint, category, radius)
+                            }.getOrDefault(emptyList())
+                        }
+                    }
+                    .awaitAll()
+                    .flatten()
+                    .distinctBy { it.id }
 
-            val results = _uiState.value.searchCategories
-                .map { category ->
-                    async { YandexSearchRepository.searchCategory(userPoint, category, radius) }
+                _uiState.update { state ->
+                    if (results.isNotEmpty()) {
+                        placesCache.save(results)
+                        state.copy(places = results, isRefreshingRealData = false)
+                    } else {
+                        // Keep the last good result if the network returns no matches.
+                        state.copy(isRefreshingRealData = false)
+                    }
                 }
-                .awaitAll()
-                .flatten()
-
-            _uiState.update { state ->
-                if (results.isNotEmpty()) {
-                    // Сохраняем, чтобы при следующем запуске показать этот же список.
-                    placesCache.save(results)
-                    state.copy(places = results, isRefreshingRealData = false)
-                } else {
-                    // Поиск не дал результатов (нет сети, пустая выдача и т.п.) —
-                    // оставляем то, что уже показано, чтобы экран не опустел.
-                    state.copy(isRefreshingRealData = false)
-                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                _uiState.update { it.copy(isRefreshingRealData = false) }
             }
         }
+    }
+
+    override fun onCleared() {
+        placesSearchJob?.cancel()
+        placesSearchJob = null
+        super.onCleared()
     }
 }

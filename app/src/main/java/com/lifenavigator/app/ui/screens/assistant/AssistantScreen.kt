@@ -1,16 +1,30 @@
 package com.lifenavigator.app.ui.screens.assistant
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Bundle
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lifenavigator.app.data.model.AssistantMessage
 import kotlinx.coroutines.launch
@@ -20,8 +34,100 @@ import kotlinx.coroutines.launch
 fun AssistantScreen(viewModel: AssistantViewModel = viewModel()) {
     val state by viewModel.uiState.collectAsState()
     var input by remember { mutableStateOf("") }
+    var voiceError by remember { mutableStateOf<String?>(null) }
+    var voiceStatus by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
+
+    val speechRecognizer = remember(context) {
+        if (SpeechRecognizer.isRecognitionAvailable(context)) {
+            SpeechRecognizer.createSpeechRecognizer(context)
+        } else {
+            null
+        }
+    }
+    val speechIntent = remember {
+        Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ru-RU")
+            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+        }
+    }
+    // Final speech recognition result is executed immediately. The user does not
+    // need to tap the Send button after speaking.
+    val onRecognized = rememberUpdatedState<(String) -> Unit> { recognized ->
+        input = ""
+        voiceError = null
+        voiceStatus = "Команда распознана — выполняю"
+        viewModel.sendMessage(recognized)
+    }
+
+    DisposableEffect(speechRecognizer) {
+        if (speechRecognizer != null) {
+            speechRecognizer.setRecognitionListener(object : RecognitionListener {
+                override fun onResults(results: Bundle?) {
+                    val recognized = results
+                        ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                        ?.firstOrNull()
+                    if (recognized.isNullOrBlank()) {
+                        voiceError = "Не удалось распознать речь. Попробуйте ещё раз."
+                        voiceStatus = null
+                    } else {
+                        onRecognized.value(recognized)
+                    }
+                }
+
+                override fun onError(error: Int) {
+                    voiceStatus = null
+                    voiceError = when (error) {
+                        SpeechRecognizer.ERROR_NO_MATCH,
+                        SpeechRecognizer.ERROR_SPEECH_TIMEOUT ->
+                            "Речь не распознана. Попробуйте ещё раз."
+                        SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS ->
+                            "Для голосового ввода нужно разрешение на микрофон."
+                        else -> "Ошибка распознавания речи (код $error)."
+                    }
+                }
+
+                override fun onReadyForSpeech(params: Bundle?) {
+                    voiceError = null
+                    voiceStatus = "Слушаю…"
+                }
+                override fun onBeginningOfSpeech() { voiceStatus = "Говорите…" }
+                override fun onRmsChanged(rmsdB: Float) {}
+                override fun onBufferReceived(buffer: ByteArray?) {}
+                override fun onEndOfSpeech() { voiceStatus = "Распознаю команду…" }
+                override fun onPartialResults(partialResults: Bundle?) {}
+                override fun onEvent(eventType: Int, params: Bundle?) {}
+            })
+        }
+        onDispose {
+            runCatching { speechRecognizer?.cancel() }
+            speechRecognizer?.destroy()
+        }
+    }
+
+    val startSpeech: () -> Unit = {
+        voiceError = null
+        if (speechRecognizer == null) {
+            voiceError = "На устройстве недоступно распознавание речи."
+        } else {
+            voiceStatus = "Слушаю…"
+            runCatching { speechRecognizer.startListening(speechIntent) }
+                .onFailure {
+                    voiceStatus = null
+                    voiceError = "Не удалось запустить микрофон: ${it.message ?: "ошибка распознавания"}"
+                }
+        }
+    }
+    val microphonePermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) startSpeech()
+        else voiceError = "Разрешение на микрофон не предоставлено."
+    }
 
     LaunchedEffect(state.messages.size) {
         if (state.messages.isNotEmpty()) {
@@ -30,7 +136,17 @@ fun AssistantScreen(viewModel: AssistantViewModel = viewModel()) {
     }
 
     Column(Modifier.fillMaxSize()) {
-        TopAppBar(title = { Text("Личный помощник") })
+        TopAppBar(title = { Text("LifeAssistant") })
+        Text(
+            text = if (state.replyModeLabel.startsWith("Облачный ИИ")) {
+                "Режим: ${state.replyModeLabel}. Сводка бюджета и последние реплики передаются серверу и YandexGPT; имя, почта и точные координаты не включаются."
+            } else {
+                "Режим: ${state.replyModeLabel}. Ответы формируются на устройстве по данным бюджета и сохранённым местам. Для свободного диалога нужен настроенный серверный ИИ."
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+        )
 
         LazyColumn(
             state = listState,
@@ -49,25 +165,74 @@ fun AssistantScreen(viewModel: AssistantViewModel = viewModel()) {
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
+                .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             OutlinedTextField(
                 value = input,
                 onValueChange = { input = it },
                 modifier = Modifier.weight(1f),
-                placeholder = { Text("Спросите про бюджет, подписки, маршрут…") },
+                placeholder = { Text("Чем заняться вместо рутины?") },
                 singleLine = true
             )
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(4.dp))
+            IconButton(
+                onClick = { viewModel.setVoiceReplyEnabled(!state.isVoiceReplyEnabled) }
+            ) {
+                Icon(
+                    if (state.isVoiceReplyEnabled) Icons.Filled.VolumeUp else Icons.Filled.VolumeOff,
+                    contentDescription = if (state.isVoiceReplyEnabled) "Выключить голосовые ответы" else "Включить голосовые ответы"
+                )
+            }
+            IconButton(
+                enabled = !state.isReplying,
+                onClick = {
+                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)
+                        == PackageManager.PERMISSION_GRANTED
+                    ) {
+                        startSpeech()
+                    } else {
+                        microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
+                    }
+                }
+            ) {
+                Icon(Icons.Filled.Mic, contentDescription = "Сказать команду")
+            }
             IconButton(onClick = {
                 if (input.isNotBlank()) {
-                    viewModel.sendMessage(input)
+                    viewModel.sendMessage(input.trim())
                     input = ""
+                    voiceError = null
                 }
-            }) {
+            }, enabled = input.isNotBlank() && !state.isReplying) {
                 Icon(Icons.Filled.Send, contentDescription = "Отправить")
             }
+        }
+        when {
+            voiceError != null -> Text(
+                text = voiceError.orEmpty(),
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp)
+            )
+            state.isReplying -> Text(
+                text = "Обрабатываю команду…",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp)
+            )
+            state.isSpeaking -> Text(
+                text = "LifeAssistant отвечает голосом…",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp)
+            )
+            voiceStatus != null -> Text(
+                text = voiceStatus.orEmpty(),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp)
+            )
         }
     }
 }
@@ -98,8 +263,12 @@ private fun ChatBubble(message: AssistantMessage) {
 @Composable
 private fun TypingIndicator() {
     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) {
-        Card(modifier = Modifier.fillMaxWidth(0.4f)) {
-            Text("печатает…", modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall)
+        Card {
+            Text(
+                "Помощник печатает…",
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                style = MaterialTheme.typography.bodySmall
+            )
         }
     }
 }

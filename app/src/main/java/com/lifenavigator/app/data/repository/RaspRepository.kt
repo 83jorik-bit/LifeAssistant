@@ -1,6 +1,5 @@
 package com.lifenavigator.app.data.repository
 
-import com.lifenavigator.app.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -54,6 +53,11 @@ sealed class ScheduleResult {
  */
 object RaspRepository {
 
+    // Disabled until the API call is moved behind the server-side proxy.
+    // Do not store an account API key in a public/mobile app: APKs can be inspected.
+    private const val raspApiKey = ""
+
+
     /**
      * Основной домен и запасной. Яндекс сам предупреждает, что доступность
      * api.rasp.yandex.net не гарантируется и рекомендует yandex-net.ru — но если
@@ -79,9 +83,9 @@ object RaspRepository {
         longitude: Double,
         placeName: String
     ): ScheduleResult = withContext(Dispatchers.IO) {
-        if (BuildConfig.RASP_API_KEY.isBlank()) {
+        if (raspApiKey.isBlank()) {
             return@withContext ScheduleResult.Error(
-                "Не задан ключ API Яндекс Расписаний (RASP_API_KEY)"
+                "Расписание временно отключено до настройки защищённого серверного прокси."
             )
         }
 
@@ -135,7 +139,7 @@ object RaspRepository {
      */
     private fun findStation(latitude: Double, longitude: Double, placeName: String): Station? {
         val path = "/nearest_stations/?" +
-            "apikey=${BuildConfig.RASP_API_KEY}" +
+            "apikey=${raspApiKey}" +
             "&format=json&lang=ru_RU" +
             "&lat=$latitude&lng=$longitude" +
             // 20 станций достаточно, а ответ заметно легче, чем на 50.
@@ -212,7 +216,7 @@ object RaspRepository {
 
         while (result.size < MAX_DEPARTURES && offset < total && pagesRead < MAX_PAGES) {
             val path = "/schedule/?" +
-                "apikey=${BuildConfig.RASP_API_KEY}" +
+                "apikey=${raspApiKey}" +
                 "&format=json&lang=ru_RU" +
                 "&station=${URLEncoder.encode(stationCode, "UTF-8")}" +
                 "&date=${date.format(DateTimeFormatter.ISO_LOCAL_DATE)}&event=departure" +

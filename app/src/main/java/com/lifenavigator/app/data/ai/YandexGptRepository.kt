@@ -28,11 +28,16 @@ sealed class GptResult {
  */
 object YandexGptRepository {
 
+    // API credentials must not be bundled in an APK. This client remains disabled
+    // until a server-side proxy is configured; never place the secret in BuildConfig.
+    private val apiKey: String get() = ""
+
+
     private const val URL_COMPLETION = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
     private const val TIMEOUT_MS = 30_000
 
     val isConfigured: Boolean
-        get() = BuildConfig.YANDEX_GPT_API_KEY.isNotBlank() && BuildConfig.YANDEX_GPT_FOLDER_ID.isNotBlank()
+        get() = apiKey.isNotBlank() && BuildConfig.YANDEX_GPT_FOLDER_ID.isNotBlank()
 
     /**
      * Задаёт вопрос модели.
@@ -45,7 +50,7 @@ object YandexGptRepository {
         withContext(Dispatchers.IO) {
             if (!isConfigured) {
                 return@withContext GptResult.Failure(
-                    "Помощник не настроен: нужны YANDEX_GPT_API_KEY и YANDEX_GPT_FOLDER_ID"
+                    "Облачный помощник временно отключён до настройки защищённого серверного прокси."
                 )
             }
 
@@ -92,7 +97,7 @@ object YandexGptRepository {
             connectTimeout = TIMEOUT_MS
             readTimeout = TIMEOUT_MS
             setRequestProperty("Content-Type", "application/json")
-            setRequestProperty("Authorization", "Api-Key ${BuildConfig.YANDEX_GPT_API_KEY}")
+            setRequestProperty("Authorization", "Api-Key ${apiKey}")
         }
         try {
             connection.outputStream.use { it.write(body.toByteArray()) }

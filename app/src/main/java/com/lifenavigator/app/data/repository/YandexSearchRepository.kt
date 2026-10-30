@@ -24,6 +24,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlin.math.asin
 import kotlin.math.cos
 import kotlin.math.pow
@@ -60,6 +62,10 @@ object YandexSearchRepository {
     // иначе ответ может не дойти (сборщик мусора соберёт объект раньше времени).
     private val activeSessions = mutableListOf<Session>()
     private val activeListeners = mutableListOf<Session.SearchListener>()
+
+    // SearchManager requests are native MapKit sessions. Limit concurrent requests
+    // across all categories/queries rather than launching dozens at once.
+    private val requestSemaphore = Semaphore(4)
 
     /**
      * На каждую категорию — несколько формулировок запроса.
@@ -186,7 +192,8 @@ object YandexSearchRepository {
         query: String,
         radiusMeters: Float
     ): List<PlacePoint> {
-        return suspendCancellableCoroutine { continuation ->
+        return requestSemaphore.withPermit {
+            suspendCancellableCoroutine { continuation ->
             val searchOptions = SearchOptions().apply {
                 searchTypes = searchTypesFor(category)
                 // Было 10 — из-за этого часть организаций просто не доезжала до списка.
@@ -227,6 +234,7 @@ object YandexSearchRepository {
             continuation.invokeOnCancellation {
                 session.cancel()
                 release(session, listener)
+            }
             }
         }
     }

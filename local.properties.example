@@ -1,43 +1,26 @@
-# Скопируйте этот файл в local.properties (без .example) и подставьте свой ключ.
-# local.properties НЕ коммитится в git (см. .gitignore) — так ключ не попадёт в историю репозитория.
-MAPKIT_API_KEY=your-yandex-mapkit-key-here
+# Copy to local.properties on your development computer; Git ignores that file.
+# Any value compiled into Android BuildConfig or resources can be extracted from the APK.
+# Never put server-only credentials or release signing passwords into mobile configuration.
 
-# Ключ API Яндекс Расписаний (расписание транспорта на остановках и станциях)
-RASP_API_KEY=your-yandex-rasp-key-here
+# MapKit mobile SDK key: restrict it in the provider console to this app/package where possible.
+MAPKIT_API_KEY=your-restricted-mapkit-key
 
-# --- Вход через существующий ID (необязательно) ---
-# Яндекс ID: oauth.yandex.ru, тип приложения — «Для авторизации пользователей»
-#   (у типа «для доступа к API» адрес возврата зафиксирован и не меняется).
-#   Адрес возврата по умолчанию: lifenavigator://auth/yandex
+# Yandex Rasp API credentials belong on the backend; the mobile client is disabled
+# until a secure proxy is configured.
+
+# OAuth client IDs are public application identifiers, not client secrets.
 YANDEX_CLIENT_ID=
-# VK ID: кабинет id.vk.ru, адрес возврата по умолчанию: lifenavigator://auth/vk
 VK_CLIENT_ID=
-
-# Если кабинет провайдера не принимает свою схему, укажите здесь тот адрес,
-# который он принял. Пусто — используется значение по умолчанию.
 YANDEX_REDIRECT_URI=
-VK_REDIRECT_URI=
 
-# --- Свой сервер хранения данных (необязательно) ---
-# Адрес развёрнутого сервера из папки backend/, без слэша на конце.
-# Пусто — приложение работает только локально, без синхронизации.
-# Пример: https://api.example.ru
+# Optional backend URL. Keep server API credentials on the backend only.
 BACKEND_BASE_URL=
 
-# --- ИИ-помощник на YandexGPT (необязательно) ---
-# Консоль Yandex Cloud: создайте сервисный аккаунт с ролью ai.languageModels.user,
-# выпустите для него API-ключ, идентификатор каталога возьмите на главной странице консоли.
-# ВНИМАНИЕ: ключ попадает внутрь APK и извлекаем из него. Для публикации вызов
-# следует проксировать через свой сервер (папка backend/), а не звать напрямую.
-YANDEX_GPT_API_KEY=
+# YandexGPT folder/catalog ID is not a credential.
 YANDEX_GPT_FOLDER_ID=
 
-# --- Релизная подпись (нужна только для сборки релиза под RuStore) ---
-# Создать ключ: keytool -genkeypair -v -keystore release.keystore \
-#   -alias lifenavigator -keyalg RSA -keysize 2048 -validity 10950
-# ВНИМАНИЕ: этот ключ нельзя терять. Без него обновить приложение в RuStore
-# под тем же package name будет невозможно — только публиковать заново как новое.
-RELEASE_STORE_FILE=/полный/путь/release.keystore
-RELEASE_STORE_PASSWORD=пароль-хранилища
+# Release signing; keep the file and passwords outside Git.
+RELEASE_STORE_FILE=/absolute/path/to/release.keystore
+RELEASE_STORE_PASSWORD=
 RELEASE_KEY_ALIAS=lifenavigator
-RELEASE_KEY_PASSWORD=пароль-ключа
+RELEASE_KEY_PASSWORD=

@@ -74,6 +74,47 @@ private val MOSCOW_CENTER = Point(55.7530, 37.6215)
 /** Что занимает экран: и карта, и список; только карта; только список. */
 private enum class LayoutMode { SPLIT, MAP_ONLY, LIST_ONLY }
 
+/** Keeps MapView lifecycle calls balanced even when Compose effects are recreated. */
+private class MapViewLifecycleController {
+    private var startedView: MapView? = null
+
+    fun start(view: MapView) {
+        if (startedView === view) return
+        startedView?.let(::stop)
+        view.onStart()
+        startedView = view
+    }
+
+    fun stop(view: MapView) {
+        if (startedView !== view) return
+        view.onStop()
+        startedView = null
+    }
+
+    fun destroy(view: MapView) {
+        stop(view)
+        view.destroy()
+    }
+}
+
+/** Avoids clearing and rebuilding native map objects on every Compose recomposition. */
+private class MarkerRenderCache {
+    private var lastPlaces: List<PlacePoint>? = null
+    private var lastShowLabels: Boolean? = null
+
+    fun shouldRender(places: List<PlacePoint>, showLabels: Boolean): Boolean {
+        if (lastPlaces == places && lastShowLabels == showLabels) return false
+        lastPlaces = places.toList()
+        lastShowLabels = showLabels
+        return true
+    }
+
+    fun clear() {
+        lastPlaces = null
+        lastShowLabels = null
+    }
+}
+
 /**
  * Стиль карты: прячем чужие точки интереса и подписи транспорта, чтобы на карте
  * остались только те места, что показаны в списке под ней.
@@ -129,7 +170,8 @@ fun MapScreen(viewModel: MapViewModel = viewModel()) {
         val listener = object : LocationListener {
             override fun onLocationUpdated(location: Location) {
                 val userPoint = location.position
-                mapViewRef?.map?.move(
+                val activeMapView = mapViewRef ?: return
+                activeMapView.map.move(
                     CameraPosition(userPoint, 16f, 0f, 0f),
                     Animation(Animation.Type.SMOOTH, 0.5f),
                     null
@@ -164,7 +206,9 @@ fun MapScreen(viewModel: MapViewModel = viewModel()) {
     // При смене набора категорий список начинают читать сначала — возвращаем его наверх,
     // иначе пользователь остаётся где-то в середине уже другого списка.
     LaunchedEffect(state.selectedCategories) {
-        listState.animateScrollToItem(0)
+        if (listState.layoutInfo.totalItemsCount > 0) {
+            listState.animateScrollToItem(0)
+        }
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -632,13 +676,15 @@ private fun DetailRow(icon: androidx.compose.ui.graphics.vector.ImageVector, tex
 private fun YandexMapView(
     places: List<PlacePoint>,
     hasLocationPermission: Boolean,
-    onLocationLayerReady: (UserLocationLayer) -> Unit,
-    onMapViewReady: (MapView) -> Unit,
+    onLocationLayerReady: (UserLocationLayer?) -> Unit,
+    onMapViewReady: (MapView?) -> Unit,
     onPlaceTapped: (String) -> Unit
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val context = LocalContext.current
     val mapView = remember { mutableStateOf<MapView?>(null) }
+    val lifecycleController = remember { MapViewLifecycleController() }
+    val renderCache = remember { MarkerRenderCache() }
     var showLabels by remember { mutableStateOf(false) }
 
     // Значки категорий рисуем один раз и переиспользуем: создавать растр на каждую
@@ -666,6 +712,7 @@ private fun YandexMapView(
     AndroidView(
         modifier = Modifier.fillMaxSize(),
         factory = { ctx ->
+            renderCache.clear()
             MapView(ctx).also { view ->
                 mapView.value = view
                 view.map.setMapStyle(HIDE_POI_STYLE)
@@ -683,37 +730,45 @@ private fun YandexMapView(
             }
         },
         update = { view ->
-            renderPlaceMarkers(view.map.mapObjects, places, markerIcons, showLabels, tapListener)
+            if (renderCache.shouldRender(places, showLabels)) {
+                renderPlaceMarkers(view.map.mapObjects, places, markerIcons, showLabels, tapListener)
+            }
+        },
+        onRelease = { view ->
+            // Yandex MapView owns native resources; release them when AndroidView leaves Compose.
+            lifecycleController.destroy(view)
+            renderCache.clear()
+            if (mapView.value === view) {
+                mapView.value = null
+                onLocationLayerReady(null)
+                onMapViewReady(null)
+            }
         }
     )
 
-    DisposableEffect(lifecycleOwner) {
-        // Важно: onStart/onStop вызываем ТОЛЬКО из наблюдателя жизненного цикла.
-        // Раньше здесь был ещё и прямой вызов onStart, из-за чего при некоторых
-        // сценариях старт/стоп могли задваиваться.
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_START -> {
-                    mapView.value?.onStart()
+    // Key the effect by the actual MapView instance, not only by the lifecycle owner.
+    // AndroidView.factory creates the view after initial composition; without this key,
+    // ON_START could be missed while mapView.value was still null.
+    DisposableEffect(lifecycleOwner, mapView.value) {
+        val activeView = mapView.value
+        if (activeView == null) {
+            onDispose { }
+        } else {
+            val observer = LifecycleEventObserver { _, event ->
+                when (event) {
+                    Lifecycle.Event.ON_START -> lifecycleController.start(activeView)
+                    Lifecycle.Event.ON_STOP -> lifecycleController.stop(activeView)
+                    else -> Unit
                 }
-                Lifecycle.Event.ON_STOP -> {
-                    mapView.value?.onStop()
-                }
-                else -> Unit
             }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-
-        // Если экран открылся, когда приложение уже в состоянии STARTED,
-        // событие ON_START не придёт — запускаем вручную.
-        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
-            mapView.value?.onStart()
-        }
-
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
+            lifecycleOwner.lifecycle.addObserver(observer)
             if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
-                mapView.value?.onStop()
+                lifecycleController.start(activeView)
+            }
+
+            onDispose {
+                lifecycleOwner.lifecycle.removeObserver(observer)
+                lifecycleController.stop(activeView)
             }
         }
     }
@@ -783,7 +838,14 @@ private fun renderPlaceMarkers(
     tapListener: MapObjectTapListener
 ) {
     collection.clear()
-    places.forEach { place ->
+    places.asSequence()
+        .filter { place ->
+            place.latitude.isFinite() && place.longitude.isFinite() &&
+                place.latitude in -90.0..90.0 && place.longitude in -180.0..180.0 &&
+                place.id.isNotBlank()
+        }
+        .distinctBy { it.id }
+        .forEach { place ->
         val icon = markerIcons[markerStyleFor(place).key] ?: return@forEach
         val placemark = collection.addPlacemark(Point(place.latitude, place.longitude), icon)
         // По идентификатору в userData находим место, когда по метке тапнули.

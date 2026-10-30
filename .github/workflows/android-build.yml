@@ -1,14 +1,18 @@
 name: Android CI
 
-# Собирает debug-APK при каждом push/PR в main, и по кнопке вручную (workflow_dispatch).
-# Ключ Yandex MapKit берётся из GitHub Secrets — в репозитории он никогда не хранится.
-
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -19,29 +23,43 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
-          distribution: 'temurin'
-          java-version: '17'
+          distribution: temurin
+          java-version: "17"
 
-      - name: Create local.properties with API keys
+      - name: Create local.properties from GitHub Secrets
+        env:
+          MAPKIT_API_KEY: ${{ secrets.MAPKIT_API_KEY }}
+          YANDEX_CLIENT_ID: ${{ secrets.YANDEX_CLIENT_ID }}
+          VK_CLIENT_ID: ${{ secrets.VK_CLIENT_ID }}
+          YANDEX_REDIRECT_URI: ${{ secrets.YANDEX_REDIRECT_URI }}
+          BACKEND_BASE_URL: ${{ secrets.BACKEND_BASE_URL }}
+          YANDEX_GPT_FOLDER_ID: ${{ secrets.YANDEX_GPT_FOLDER_ID }}
+        shell: bash
         run: |
-          echo "MAPKIT_API_KEY=${{ secrets.MAPKIT_API_KEY }}" > local.properties
-          echo "RASP_API_KEY=${{ secrets.RASP_API_KEY }}" >> local.properties
-          # Вход через внешние ID. Если секреты не заданы, значения останутся пустыми
-          # и кнопки входа будут показаны неактивными — сборка при этом не ломается.
-          echo "YANDEX_CLIENT_ID=${{ secrets.YANDEX_CLIENT_ID }}" >> local.properties
-          echo "VK_CLIENT_ID=${{ secrets.VK_CLIENT_ID }}" >> local.properties
-          echo "YANDEX_REDIRECT_URI=${{ secrets.YANDEX_REDIRECT_URI }}" >> local.properties
-          echo "BACKEND_BASE_URL=${{ secrets.BACKEND_BASE_URL }}" >> local.properties
-          echo "YANDEX_GPT_API_KEY=${{ secrets.YANDEX_GPT_API_KEY }}" >> local.properties
-          echo "YANDEX_GPT_FOLDER_ID=${{ secrets.YANDEX_GPT_FOLDER_ID }}" >> local.properties
-          echo "VK_REDIRECT_URI=${{ secrets.VK_REDIRECT_URI }}" >> local.properties
+          {
+            printf 'MAPKIT_API_KEY=%s\n' "$MAPKIT_API_KEY"
+            printf 'YANDEX_CLIENT_ID=%s\n' "$YANDEX_CLIENT_ID"
+            printf 'VK_CLIENT_ID=%s\n' "$VK_CLIENT_ID"
+            printf 'YANDEX_REDIRECT_URI=%s\n' "$YANDEX_REDIRECT_URI"
+            printf 'BACKEND_BASE_URL=%s\n' "$BACKEND_BASE_URL"
+            printf 'YANDEX_GPT_FOLDER_ID=%s\n' "$YANDEX_GPT_FOLDER_ID"
+          } > local.properties
+
+      - name: Validate backend JavaScript syntax
+        run: |
+          for file in server/src/*.js server/src/routes/*.js; do
+            echo "Checking $file"
+            node --check "$file"
+          done
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.7'
+          gradle-version: "8.7"
+          # The repository owner can warm this PR's cache; fork PRs stay read-only.
+          cache-read-only: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
 
       - name: Build debug APK
         run: gradle assembleDebug
@@ -49,7 +67,20 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          # Debug-APK нужен только чтобы скачать и поставить. По умолчанию GitHub хранит артефакты 90 дней, и десятки APK с MapKit переполняли бесплатные 500 МБ — сборки переставали запускаться.
-          retention-days: 3
           name: app-debug-apk
+          retention-days: 1
           path: app/build/outputs/apk/debug/app-debug.apk
+
+      # Match the SoulAndroid release workflow: a manual run publishes a prerelease
+      # containing the debug APK. Push/PR runs remain CI-only.
+      - name: Publish APK to GitHub Releases
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          TAG="debug-${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" app/build/outputs/apk/debug/app-debug.apk \
+            --title "LifeAssistant debug build #${GITHUB_RUN_NUMBER}" \
+            --notes "Automatically built from commit ${GITHUB_SHA}. Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            --prerelease --target "${GITHUB_SHA}"
