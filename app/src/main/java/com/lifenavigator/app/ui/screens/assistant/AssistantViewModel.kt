@@ -8,6 +8,8 @@ import androidx.lifecycle.viewModelScope
 import com.lifenavigator.app.data.ai.AssistantContext
 import com.lifenavigator.app.data.ai.GptMessage
 import com.lifenavigator.app.data.ai.LocalAssistantEngine
+import com.lifenavigator.app.data.ai.YandexGptRepository
+import com.lifenavigator.app.data.ai.GptResult
 import com.lifenavigator.app.data.backend.BackendApi
 import com.lifenavigator.app.data.backend.BackendResult
 import com.lifenavigator.app.data.local.SessionStore
@@ -127,21 +129,30 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
             val application = getApplication<Application>()
             val sessionToken = SessionStore.token.value
 
-            val cloudResult = if (!LocalAssistantEngine.isTaskCommand(trimmed) && BackendApi.isConfigured && !sessionToken.isNullOrBlank()) {
-                runCatching {
-                    val systemPrompt = AssistantContext.build(application)
-                    val history = _uiState.value.messages
-                        .filterNot { it.id == "welcome" }
-                        .takeLast(historyDepth)
-                        .map { message ->
-                            GptMessage(
-                                role = if (message.isFromUser) "user" else "assistant",
-                                text = message.text
-                            )
-                        }
+            val cloudResult = if (!LocalAssistantEngine.isTaskCommand(trimmed)) {
+                val systemPrompt = AssistantContext.build(application)
+                val history = _uiState.value.messages
+                    .filterNot { it.id == "welcome" }
+                    .takeLast(historyDepth)
+                    .map { message ->
+                        GptMessage(
+                            role = if (message.isFromUser) "user" else "assistant",
+                            text = message.text
+                        )
+                    }
+
+                // Для тестирования используем прямой Yandex Cloud API, если ключ
+                // передан через GitHub Actions secret. Это временный режим: ключ
+                // окажется внутри APK и после тестов должен быть отозван/заменён.
+                if (YandexGptRepository.isConfigured) {
+                    when (val result = YandexGptRepository.ask(systemPrompt, history)) {
+                        is GptResult.Success -> BackendResult.Success(result.text)
+                        is GptResult.Failure -> BackendResult.Failure(result.message)
+                    }
+                } else if (BackendApi.isConfigured && !sessionToken.isNullOrBlank()) {
                     BackendApi.askAssistant(sessionToken, systemPrompt, history)
-                }.getOrElse { error ->
-                    BackendResult.Failure(error.message ?: "Серверный ИИ недоступен")
+                } else {
+                    null
                 }
             } else {
                 null
@@ -159,7 +170,7 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
                 }
                 null -> {
                     val local = LocalAssistantEngine.reply(application, trimmed)
-                    if (!BackendApi.isConfigured) {
+                    if (!BackendApi.isConfigured && !YandexGptRepository.isConfigured) {
                         replyMode = "Автономный режим"
                         local
                     } else {
