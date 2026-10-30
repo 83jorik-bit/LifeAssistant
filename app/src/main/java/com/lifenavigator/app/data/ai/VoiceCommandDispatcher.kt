@@ -6,6 +6,11 @@ import com.lifenavigator.app.data.local.CalendarStorage
 import com.lifenavigator.app.data.local.TaskReminderScheduler
 import com.lifenavigator.app.data.local.TaskStorage
 import com.lifenavigator.app.data.model.TaskPriority
+import com.lifenavigator.app.data.model.Expense
+import com.lifenavigator.app.data.model.NeedCategory
+import org.json.JSONObject
+import java.time.YearMonth
+import java.util.UUID
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -117,6 +122,68 @@ object VoiceCommandDispatcher {
             return "Событие «${event.title}» сохранено в календаре на ${date} в %02d:%02d. Напоминание — за 15 минут.".format(hour, minute)
         }
 
+        // Pending budget mutations are persisted separately and require an explicit confirmation.
+        val budgetPrefs = context.getSharedPreferences("voice_budget_pending", Context.MODE_PRIVATE)
+        val pendingRaw = budgetPrefs.getString("pending", null)
+        val confirmation = q in setOf("да", "да сохранить", "подтверждаю", "сохрани", "сохранить")
+        val cancellation = q in setOf("нет", "отмена", "отмени", "не сохраняй", "отменить")
+        fun categoryTitle(key: String): String =
+            NeedCategory.entries.firstOrNull { it.name == key }?.displayName
+                ?: com.lifenavigator.app.data.local.BudgetStorage(context).loadCustomCategories().firstOrNull { it.key == key }?.title
+                ?: key
+        if (pendingRaw != null && confirmation) {
+            val pending = runCatching { JSONObject(pendingRaw) }.getOrNull()
+                ?: run { budgetPrefs.edit().remove("pending").apply(); return "Не удалось прочитать операцию. Ничего не сохранено." }
+            val storage = com.lifenavigator.app.data.local.BudgetStorage(context)
+            val amount = pending.optInt("amount", 0)
+            if (amount <= 0) return "Некорректная сумма. Ничего не сохранено."
+            when (pending.optString("type")) {
+                "expense" -> {
+                    val category = pending.optString("category")
+                    if (category.isBlank()) return "Не указана категория. Ничего не сохранено."
+                    val entries = storage.loadExpenses().toMutableList()
+                    entries.add(Expense(UUID.randomUUID().toString(), category, amount, null, LocalDate.now(zone).toEpochDay()))
+                    storage.saveExpenses(entries)
+                    budgetPrefs.edit().remove("pending").apply()
+                    return "Расход $amount ₽ сохранён: ${categoryTitle(category)}."
+                }
+                "income" -> {
+                    storage.saveIncome(YearMonth.now(), amount)
+                    budgetPrefs.edit().remove("pending").apply()
+                    return "Доход $amount ₽ сохранён для текущего месяца."
+                }
+            }
+            return "Неизвестный тип операции. Ничего не сохранено."
+        }
+        if (pendingRaw != null && cancellation) {
+            budgetPrefs.edit().remove("pending").apply()
+            return "Операция отменена. Бюджет не изменён."
+        }
+        if (pendingRaw != null) return "Ожидаю подтверждение: скажи «да» или «отмена»."
+        val expenseCue = listOf("добавь расход", "запиши расход", "учти расход").firstOrNull { q.startsWith(it) }
+        val incomeCue = listOf("добавь доход", "запиши доход", "учти доход").firstOrNull { q.startsWith(it) }
+        if (expenseCue != null || incomeCue != null) {
+            val amount = Regex("(?<!\\d)\\d{1,9}(?!\\d)").find(q)?.value?.toIntOrNull()
+                ?: return "Не распознал сумму. Например: «Добавь расход 750 рублей на продукты»."
+            if (amount <= 0) return "Сумма должна быть больше нуля."
+            val isExpense = expenseCue != null
+            val category = if (!isExpense) null else when {
+                listOf("продукт", "магазин", "еда").any(q::contains) -> NeedCategory.GROCERY.name
+                listOf("кафе", "ресторан", "кофе").any(q::contains) -> NeedCategory.CAFE.name
+                listOf("аптек", "лекарств").any(q::contains) -> NeedCategory.PHARMACY.name
+                listOf("одежд", "обув").any(q::contains) -> NeedCategory.CLOTHING.name
+                listOf("транспорт", "такси", "проезд", "бензин").any(q::contains) -> NeedCategory.TRANSPORT.name
+                listOf("красот", "салон").any(q::contains) -> NeedCategory.BEAUTY.name
+                listOf("образован", "курс", "обучен").any(q::contains) -> NeedCategory.EDUCATION.name
+                listOf("клиник", "врач", "медицин").any(q::contains) -> NeedCategory.CLINIC.name
+                else -> null
+            }
+            if (isExpense && category == null) return "Уточни категорию расхода: продукты, кафе, аптека, одежда, транспорт, красота, образование или медицина. Ничего не сохранено."
+            val pending = JSONObject().put("type", if (isExpense) "expense" else "income").put("amount", amount).put("category", category ?: "")
+            budgetPrefs.edit().putString("pending", pending.toString()).apply()
+            return if (isExpense) "Распознал расход: $amount ₽, категория «${categoryTitle(category!!)}». Сохранить? Скажи «да» или «отмена»."
+            else "Распознал доход: $amount ₽ за текущий месяц. Сохранить? Скажи «да» или «отмена»."
+        }
         // Чтение бюджета и сохранённых мест выполняет существующий локальный движок,
         // который обращается к реальным BudgetStorage и PlacesCache.
         val budgetOrPlacesCue = listOf(
