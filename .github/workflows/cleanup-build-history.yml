@@ -1,6 +1,10 @@
 name: Cleanup build history
 
 on:
+  # Run once after each main update as well as on schedule, so old public CI history
+  # is cleared immediately after the repository housekeeping merge.
+  push:
+    branches: [ main ]
   # GitHub scheduled workflows run from the default branch.
   # Hourly cleanup enforces the 12-hour / 10-build policy with a small scheduling margin.
   schedule:
