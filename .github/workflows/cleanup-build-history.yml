@@ -1,19 +1,9 @@
 name: Cleanup build history
 
 on:
-  # Run once after each main update as well as on schedule, so old public CI history
-  # is cleared immediately after the repository housekeeping merge.
-  push:
-    branches: [ main ]
-  # Clean immediately after a debug or RuStore build completes.
-  workflow_run:
-    workflows:
-      - Android CI
-      - Release for RuStore
-    types: [ completed ]
-  # Hourly cleanup is a fallback if a workflow completion event is delayed.
+  # Daily cleanup; can also be started manually from the Actions tab.
   schedule:
-    - cron: "17 * * * *"
+    - cron: "17 3 * * *"
   workflow_dispatch:
 
 permissions:
@@ -26,21 +16,19 @@ concurrency:
 
 jobs:
   cleanup:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - name: Remove old workflow runs and debug releases
+      - name: Remove workflow runs and debug releases older than 24 hours
         uses: actions/github-script@v9
         with:
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const keepCount = 10;
-            const maxAgeMs = 12 * 60 * 60 * 1000;
+            const maxAgeMs = 24 * 60 * 60 * 1000;
             const now = Date.now();
 
-            // 1) Remove completed Actions runs that are older than 12 hours OR
-            // outside the 10 newest completed runs. Deleting a run also deletes
-            // its attached workflow artifacts and logs.
+            // Delete only completed workflow runs older than 24 hours.
+            // Recent runs are retained regardless of how many exist.
             const runs = [];
             for (let page = 1; page <= 20; page++) {
               const { data } = await github.rest.actions.listWorkflowRunsForRepo({
@@ -50,43 +38,36 @@ jobs:
               if (data.workflow_runs.length < 100) break;
             }
 
-            const completedRuns = runs
-              .filter(run => run.status === "completed")
-              .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
-
             let deletedRuns = 0;
-            for (const [index, run] of completedRuns.entries()) {
+            for (const run of runs) {
+              if (run.status !== "completed") continue;
               const ageMs = now - Date.parse(run.created_at);
-              const tooOld = ageMs > maxAgeMs;
-              const overLimit = index >= keepCount;
-              if (!tooOld && !overLimit) continue;
+              if (ageMs <= maxAgeMs) continue;
 
               try {
                 await github.rest.actions.deleteWorkflowRun({
                   owner, repo, run_id: run.id
                 });
                 deletedRuns++;
-                core.info(`Deleted Actions run ${run.id}: age=${Math.round(ageMs / 3600000)}h, index=${index + 1}`);
+                core.info(`Deleted Actions run ${run.id}: age=${Math.round(ageMs / 3600000)}h`);
               } catch (error) {
                 core.warning(`Could not delete Actions run ${run.id}: ${error.message}`);
               }
             }
 
-            // 2) Keep only the 10 newest debug prereleases, and never retain one
-            // beyond 12 hours. Production releases (non-prerelease) are untouched.
+            // Apply the same 24-hour rule only to debug prereleases.
+            // Production releases are never touched.
             const { data: allReleases } = await github.rest.repos.listReleases({
               owner, repo, per_page: 100
             });
-            const debugReleases = allReleases
-              .filter(release => release.prerelease && /^debug-\d+$/.test(release.tag_name))
-              .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+            const debugReleases = allReleases.filter(
+              release => release.prerelease && /^debug-\\d+$/.test(release.tag_name)
+            );
 
             let deletedReleases = 0;
-            for (const [index, release] of debugReleases.entries()) {
+            for (const release of debugReleases) {
               const ageMs = now - Date.parse(release.created_at);
-              const tooOld = ageMs > maxAgeMs;
-              const overLimit = index >= keepCount;
-              if (!tooOld && !overLimit) continue;
+              if (ageMs <= maxAgeMs) continue;
 
               try {
                 await github.rest.repos.deleteRelease({
@@ -100,10 +81,10 @@ jobs:
                   if (error.status !== 404) throw error;
                 }
                 deletedReleases++;
-                core.info(`Deleted debug release ${release.tag_name}: age=${Math.round(ageMs / 3600000)}h, index=${index + 1}`);
+                core.info(`Deleted debug release ${release.tag_name}: age=${Math.round(ageMs / 3600000)}h`);
               } catch (error) {
                 core.warning(`Could not delete debug release ${release.tag_name}: ${error.message}`);
               }
             }
 
-            core.notice(`Cleanup complete. Deleted ${deletedRuns} workflow runs and ${deletedReleases} debug releases.`);
+            core.notice(`Daily cleanup complete. Deleted ${deletedRuns} workflow runs and ${deletedReleases} debug releases older than 24 hours.`);
