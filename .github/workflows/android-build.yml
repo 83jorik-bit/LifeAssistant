@@ -68,7 +68,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: app-debug-apk
-          retention-days: 1
+          retention-days: 30
           path: app/build/outputs/apk/debug/app-debug.apk
 
       # Match the SoulAndroid release workflow: a manual run publishes a prerelease
