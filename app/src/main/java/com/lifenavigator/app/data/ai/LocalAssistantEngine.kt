@@ -20,6 +20,18 @@ import java.util.Locale
  */
 object LocalAssistantEngine {
 
+    /** Команды управления задачами всегда выполняются локально, а не имитируются облачной моделью. */
+    fun isTaskCommand(userText: String): Boolean {
+        val q = userText.lowercase(Locale.ROOT)
+        return listOf(
+            "добавь задачу", "создай задачу", "запиши задачу", "напомни", "не забудь",
+            "надо сделать", "нужно сделать", "мне нужно", "мне надо",
+            "мои задачи", "список задач", "что по задачам", "какие задачи",
+            "что мне нужно сделать", "что осталось сделать", "план на день",
+            "что сегодня", "есть ли просроченные"
+        ).any(q::contains)
+    }
+
     fun reply(context: Context, userText: String): String {
         val question = userText.lowercase(Locale.ROOT)
         val taskStorage = TaskStorage(context)
