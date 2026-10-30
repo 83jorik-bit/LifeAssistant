@@ -57,6 +57,9 @@ class TaskStorage(context: Context) {
     fun delete(id: String) = save(load().filterNot { it.id == id })
 
     @Synchronized
+    fun clearAll() = prefs.edit().remove(KEY_TASKS).apply()
+
+    @Synchronized
     private fun save(tasks: List<TaskItem>) {
         val array = JSONArray()
         tasks.forEach { task ->
