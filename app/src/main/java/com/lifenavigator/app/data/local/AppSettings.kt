@@ -161,6 +161,7 @@ object UserDataEraser {
         com.lifenavigator.app.data.notifications.CaptureLog.clear(context)
         com.lifenavigator.app.data.money.PlaceMatcher.clear(context)
         BudgetStorage(context).clearAll()
+        TaskStorage(context).clearAll()
         // Настройки (радиус, темы, выбранные категории) — это предпочтения показа,
         // а не персональные данные, поэтому намеренно не стираются вместе с остальным.
     }
