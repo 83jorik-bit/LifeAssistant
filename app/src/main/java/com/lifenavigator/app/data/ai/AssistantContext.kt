@@ -114,4 +114,33 @@ object AssistantContext {
                 "- ${place.name} (${place.category.displayName}), ${place.distanceKm} км$rating"
             }
     }
+    private fun agendaSummary(context: Context): String {
+        val zone = ZoneId.systemDefault()
+        val today = LocalDate.now()
+        val formatter = DateTimeFormatter.ofPattern("dd.MM HH:mm")
+        val events = CalendarStorage(context).load().filter {
+            val date = Instant.ofEpochMilli(it.startsAtEpochMillis).atZone(zone).toLocalDate()
+            !date.isBefore(today) && !date.isAfter(today.plusDays(7))
+        }
+        val tasks = TaskStorage(context).load().filterNot { it.isCompleted }
+        if (events.isEmpty() && tasks.isEmpty()) return "На ближайшую неделю событий и активных задач нет."
+        return buildString {
+            appendLine("Сегодня: $today. Часовой пояс устройства: ${zone.id}.")
+            if (events.isNotEmpty()) {
+                appendLine("События на ближайшие 7 дней:")
+                events.take(20).forEach { event ->
+                    appendLine("- ${Instant.ofEpochMilli(event.startsAtEpochMillis).atZone(zone).format(formatter)} — ${event.title}")
+                }
+            }
+            if (tasks.isNotEmpty()) {
+                appendLine("Активные задачи:")
+                tasks.sortedBy { it.dueAtEpochMillis ?: Long.MAX_VALUE }.take(20).forEach { task ->
+                    val due = task.dueAtEpochMillis?.let { " (срок ${Instant.ofEpochMilli(it).atZone(zone).format(formatter)})" }.orEmpty()
+                    appendLine("- ${task.title}$due")
+                }
+            }
+            appendLine("Не придумывай события и сроки. Любое изменение расписания сначала согласуй с пользователем.")
+        }.trim()
+    }
+
 }
