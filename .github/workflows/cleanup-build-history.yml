@@ -1,0 +1,100 @@
+name: Cleanup build history
+
+on:
+  # GitHub scheduled workflows run from the default branch.
+  # Hourly cleanup enforces the 12-hour / 10-build policy with a small scheduling margin.
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: write
+
+concurrency:
+  group: cleanup-build-history
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Remove old workflow runs and debug releases
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const keepCount = 10;
+            const maxAgeMs = 12 * 60 * 60 * 1000;
+            const now = Date.now();
+
+            // 1) Remove completed Actions runs that are older than 12 hours OR
+            // outside the 10 newest completed runs. Deleting a run also deletes
+            // its attached workflow artifacts and logs.
+            const runs = [];
+            for (let page = 1; page <= 20; page++) {
+              const { data } = await github.rest.actions.listWorkflowRunsForRepo({
+                owner, repo, per_page: 100, page
+              });
+              runs.push(...data.workflow_runs);
+              if (data.workflow_runs.length < 100) break;
+            }
+
+            const completedRuns = runs
+              .filter(run => run.status === "completed")
+              .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+
+            let deletedRuns = 0;
+            for (const [index, run] of completedRuns.entries()) {
+              const ageMs = now - Date.parse(run.created_at);
+              const tooOld = ageMs > maxAgeMs;
+              const overLimit = index >= keepCount;
+              if (!tooOld && !overLimit) continue;
+
+              try {
+                await github.rest.actions.deleteWorkflowRun({
+                  owner, repo, run_id: run.id
+                });
+                deletedRuns++;
+                core.info(`Deleted Actions run ${run.id}: age=${Math.round(ageMs / 3600000)}h, index=${index + 1}`);
+              } catch (error) {
+                core.warning(`Could not delete Actions run ${run.id}: ${error.message}`);
+              }
+            }
+
+            // 2) Keep only the 10 newest debug prereleases, and never retain one
+            // beyond 12 hours. Production releases (non-prerelease) are untouched.
+            const { data: allReleases } = await github.rest.repos.listReleases({
+              owner, repo, per_page: 100
+            });
+            const debugReleases = allReleases
+              .filter(release => release.prerelease && /^debug-\\d+$/.test(release.tag_name))
+              .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+
+            let deletedReleases = 0;
+            for (const [index, release] of debugReleases.entries()) {
+              const ageMs = now - Date.parse(release.created_at);
+              const tooOld = ageMs > maxAgeMs;
+              const overLimit = index >= keepCount;
+              if (!tooOld && !overLimit) continue;
+
+              try {
+                await github.rest.repos.deleteRelease({
+                  owner, repo, release_id: release.id
+                });
+                try {
+                  await github.rest.git.deleteRef({
+                    owner, repo, ref: `tags/${release.tag_name}`
+                  });
+                } catch (error) {
+                  if (error.status !== 404) throw error;
+                }
+                deletedReleases++;
+                core.info(`Deleted debug release ${release.tag_name}: age=${Math.round(ageMs / 3600000)}h, index=${index + 1}`);
+              } catch (error) {
+                core.warning(`Could not delete debug release ${release.tag_name}: ${error.message}`);
+              }
+            }
+
+            core.notice(`Cleanup complete. Deleted ${deletedRuns} workflow runs and ${deletedReleases} debug releases.`);
