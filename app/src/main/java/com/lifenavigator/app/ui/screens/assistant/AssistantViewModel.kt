@@ -127,7 +127,7 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
             val application = getApplication<Application>()
             val sessionToken = SessionStore.token.value
 
-            val cloudResult = if (BackendApi.isConfigured && !sessionToken.isNullOrBlank()) {
+            val cloudResult = if (!LocalAssistantEngine.isTaskCommand(trimmed) && BackendApi.isConfigured && !sessionToken.isNullOrBlank()) {
                 runCatching {
                     val systemPrompt = AssistantContext.build(application)
                     val history = _uiState.value.messages
