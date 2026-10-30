@@ -3,6 +3,11 @@ package com.lifenavigator.app.data.ai
 import android.content.Context
 import com.lifenavigator.app.data.local.BudgetStorage
 import com.lifenavigator.app.data.local.PlacesCache
+import com.lifenavigator.app.data.local.CalendarStorage
+import com.lifenavigator.app.data.local.TaskStorage
+import java.time.ZoneId
+import java.time.Instant
+import java.time.format.DateTimeFormatter
 import com.lifenavigator.app.data.model.NeedCategory
 import java.time.LocalDate
 import java.time.YearMonth
@@ -23,6 +28,7 @@ object AssistantContext {
     fun build(context: Context): String {
         val budget = budgetSummary(context)
         val places = placesSummary(context)
+        val agenda = agendaSummary(context)
 
         return buildString {
             appendLine(
@@ -39,6 +45,9 @@ object AssistantContext {
             appendLine()
             appendLine("ДАННЫЕ БЮДЖЕТА:")
             appendLine(budget)
+            appendLine()
+            appendLine("РАСПИСАНИЕ И ЗАДАЧИ (локальные данные приложения):")
+            appendLine(agenda)
             appendLine()
             appendLine("МЕСТА РЯДОМ (из последнего поиска):")
             appendLine(places)
