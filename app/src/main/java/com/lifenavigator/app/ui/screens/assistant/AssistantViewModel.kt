@@ -1,6 +1,8 @@
 package com.lifenavigator.app.ui.screens.assistant
 
 import android.app.Application
+import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.lifenavigator.app.data.ai.AssistantContext
@@ -14,6 +16,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.util.Locale
 import java.util.UUID
 
 data class AssistantUiState(
@@ -26,7 +29,10 @@ data class AssistantUiState(
         )
     ),
     val isReplying: Boolean = false,
-    val replyModeLabel: String = "Автономный режим"
+    val replyModeLabel: String = "Автономный режим",
+    val isVoiceReplyEnabled: Boolean = true,
+    val isVoiceOutputReady: Boolean = false,
+    val isSpeaking: Boolean = false
 )
 
 class AssistantViewModel(application: Application) : AndroidViewModel(application) {
@@ -36,6 +42,74 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
 
     /** Последние реплики нужны серверной модели для контекста диалога. */
     private val historyDepth = 8
+
+    private var textToSpeech: TextToSpeech? = null
+    private var ttsReady = false
+    private var pendingSpeech: String? = null
+
+    init {
+        textToSpeech = TextToSpeech(application) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                val localeStatus = textToSpeech?.setLanguage(Locale("ru", "RU"))
+                    ?: TextToSpeech.LANG_NOT_SUPPORTED
+                ttsReady = localeStatus >= TextToSpeech.LANG_AVAILABLE
+                _uiState.update { it.copy(isVoiceOutputReady = ttsReady) }
+                if (ttsReady) {
+                    pendingSpeech?.let { pending ->
+                        pendingSpeech = null
+                        speakNow(pending)
+                    }
+                }
+            } else {
+                ttsReady = false
+                _uiState.update { it.copy(isVoiceOutputReady = false, isSpeaking = false) }
+            }
+        }
+
+        textToSpeech?.setSpeechRate(0.96f)
+        textToSpeech?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+            override fun onStart(utteranceId: String?) {
+                _uiState.update { it.copy(isSpeaking = true) }
+            }
+
+            override fun onDone(utteranceId: String?) {
+                _uiState.update { it.copy(isSpeaking = false) }
+            }
+
+            @Deprecated("Deprecated in Java")
+            override fun onError(utteranceId: String?) {
+                _uiState.update { it.copy(isSpeaking = false) }
+            }
+
+            override fun onStop(utteranceId: String?, interrupted: Boolean) {
+                _uiState.update { it.copy(isSpeaking = false) }
+            }
+        })
+    }
+
+    fun setVoiceReplyEnabled(enabled: Boolean) {
+        _uiState.update { it.copy(isVoiceReplyEnabled = enabled) }
+        if (!enabled) {
+            pendingSpeech = null
+            textToSpeech?.stop()
+            _uiState.update { it.copy(isSpeaking = false) }
+        }
+    }
+
+    private fun speakReply(text: String) {
+        if (!_uiState.value.isVoiceReplyEnabled) return
+        if (!ttsReady) {
+            pendingSpeech = text
+            return
+        }
+        speakNow(text)
+    }
+
+    private fun speakNow(text: String) {
+        if (!_uiState.value.isVoiceReplyEnabled || text.isBlank()) return
+        val utteranceId = "lifeassistant-${UUID.randomUUID()}"
+        textToSpeech?.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
+    }
 
     fun sendMessage(text: String) {
         val trimmed = text.trim()
@@ -107,6 +181,14 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
                     replyModeLabel = replyMode
                 )
             }
+            speakReply(reply)
         }
+    }
+
+    override fun onCleared() {
+        textToSpeech?.stop()
+        textToSpeech?.shutdown()
+        textToSpeech = null
+        super.onCleared()
     }
 }
