@@ -36,6 +36,7 @@ jobs:
           YANDEX_REDIRECT_URI: ${{ secrets.YANDEX_REDIRECT_URI }}
           BACKEND_BASE_URL: ${{ secrets.BACKEND_BASE_URL }}
           YANDEX_GPT_FOLDER_ID: ${{ secrets.YANDEX_GPT_FOLDER_ID }}
+          YANDEX_GPT_API_KEY: ${{ secrets.YANDEX_GPT_API_KEY }}
         shell: bash
         run: |
           {
@@ -45,6 +46,7 @@ jobs:
             printf 'YANDEX_REDIRECT_URI=%s\n' "$YANDEX_REDIRECT_URI"
             printf 'BACKEND_BASE_URL=%s\n' "$BACKEND_BASE_URL"
             printf 'YANDEX_GPT_FOLDER_ID=%s\n' "$YANDEX_GPT_FOLDER_ID"
+            printf 'YANDEX_GPT_API_KEY=%s\n' "$YANDEX_GPT_API_KEY"
           } > local.properties
 
       - name: Validate backend JavaScript syntax
