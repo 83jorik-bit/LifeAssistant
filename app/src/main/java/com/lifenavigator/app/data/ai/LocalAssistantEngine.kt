@@ -4,6 +4,8 @@ import android.content.Context
 import com.lifenavigator.app.data.local.BudgetStorage
 import com.lifenavigator.app.data.local.PlacesCache
 import com.lifenavigator.app.data.local.TaskStorage
+import com.lifenavigator.app.data.local.CalendarStorage
+import com.lifenavigator.app.data.local.CalendarReminderScheduler
 import com.lifenavigator.app.data.local.TaskReminderScheduler
 import com.lifenavigator.app.data.model.TaskPriority
 import com.lifenavigator.app.data.model.NeedCategory
@@ -28,12 +30,54 @@ object LocalAssistantEngine {
             "надо сделать", "нужно сделать", "мне нужно", "мне надо",
             "мои задачи", "список задач", "что по задачам", "какие задачи",
             "что мне нужно сделать", "что осталось сделать", "план на день",
-            "что сегодня", "есть ли просроченные"
+            "что сегодня", "есть ли просроченные", "календарь", "расписание", "мои события",
+            "добавь событие", "создай событие", "запланируй", "внеси в календарь"
         ).any(q::contains)
     }
 
     fun reply(context: Context, userText: String): String {
         val question = userText.lowercase(Locale.ROOT)
+        val calendarStorage = CalendarStorage(context)
+        val calendarCues = listOf("календарь", "расписание", "мои события", "что запланировано")
+        if (calendarCues.any(question::contains) && !listOf("добавь событие", "создай событие", "запланируй", "внеси в календарь").any(question::contains)) {
+            val zone = java.time.ZoneId.systemDefault()
+            val today = LocalDate.now()
+            val targetDate = when {
+                "послезавтра" in question -> today.plusDays(2)
+                "завтра" in question -> today.plusDays(1)
+                else -> today
+            }
+            val events = calendarStorage.load().filter {
+                java.time.Instant.ofEpochMilli(it.startsAtEpochMillis).atZone(zone).toLocalDate() == targetDate
+            }
+            if (events.isEmpty()) return "На ${targetDate} событий в календаре пока нет."
+            return "События на ${targetDate}:\\n" + events.joinToString("\\n") {
+                val time = java.text.SimpleDateFormat("HH:mm", Locale.getDefault()).format(java.util.Date(it.startsAtEpochMillis))
+                "• $time — ${it.title}"
+            }
+        }
+        val createEventCue = listOf("добавь событие", "создай событие", "запланируй", "внеси в календарь").any(question::contains)
+        if (createEventCue) {
+            val date = when {
+                "послезавтра" in question -> LocalDate.now().plusDays(2)
+                "завтра" in question -> LocalDate.now().plusDays(1)
+                else -> LocalDate.now()
+            }
+            val timeMatch = Regex("\\b([01]?\\d|2[0-3]):([0-5]\\d)\\b").find(question)
+            val hour = timeMatch?.groupValues?.get(1)?.toIntOrNull() ?: 9
+            val minute = timeMatch?.groupValues?.get(2)?.toIntOrNull() ?: 0
+            val title = userText
+                .replace(Regex("(?i)добавь событие|создай событие|запланируй|внеси в календарь"), "")
+                .replace(Regex("(?i)сегодня|завтра|послезавтра"), "")
+                .replace(Regex("\\b([01]?\\d|2[0-3]):([0-5]\\d)\\b"), "")
+                .trim().trim(',', ':', '-', ' ')
+            if (title.isBlank()) return "Какое событие добавить в календарь?"
+            val start = date.atTime(hour, minute).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+            val event = calendarStorage.add(title, start)
+            CalendarReminderScheduler.schedule(context, event)
+            return "Добавил в календарь: «${event.title}», ${date} в %02d:%02d. Напомню за 15 минут.".format(hour, minute)
+        }
+
         val taskStorage = TaskStorage(context)
         val taskItems = taskStorage.load()
 
