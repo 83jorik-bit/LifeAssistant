@@ -69,7 +69,7 @@ jobs:
               owner, repo, per_page: 100
             });
             const debugReleases = allReleases
-              .filter(release => release.prerelease && /^debug-\\d+$/.test(release.tag_name))
+              .filter(release => release.prerelease && /^debug-\d+$/.test(release.tag_name))
               .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
 
             let deletedReleases = 0;
