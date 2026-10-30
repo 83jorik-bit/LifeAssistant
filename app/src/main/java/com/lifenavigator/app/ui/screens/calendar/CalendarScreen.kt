@@ -2,6 +2,12 @@ package com.lifenavigator.app.ui.screens.calendar
 
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
+import android.os.Build
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -49,6 +55,7 @@ import java.util.Locale
 fun CalendarScreen(viewModel: CalendarViewModel = viewModel()) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
+    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     var showAdd by remember { mutableStateOf(false) }
     var title by remember { mutableStateOf("") }
     var chosenDate by remember { mutableStateOf(state.selectedDate) }
@@ -111,6 +118,9 @@ fun CalendarScreen(viewModel: CalendarViewModel = viewModel()) {
             },
             confirmButton = { TextButton(enabled = title.isNotBlank(), onClick = {
                 viewModel.addEvent(title, chosenDate, chosenHour, chosenMinute)
+                if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                    notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
                 title = ""; showAdd = false
             }) { Text("Сохранить") } },
             dismissButton = { TextButton(onClick = { showAdd = false }) { Text("Отмена") } }
