@@ -1,10 +1,15 @@
 name: Cleanup build history
 
 on:
-  # Run once per day. Manual runs are available from the Actions tab.
+  # Daily cleanup and manual run. A workflow-file change also triggers one cleanup
+  # so retention policy updates can be applied immediately without another build.
   schedule:
     - cron: "17 3 * * *"
   workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - ".github/workflows/cleanup-build-history.yml"
 
 permissions:
   actions: write
@@ -18,13 +23,14 @@ jobs:
   cleanup:
     runs-on: ubuntu-24.04
     steps:
-      - name: Remove old workflow runs and debug releases while keeping recent builds
+      - name: Remove excess build artifacts and old run records while keeping recent builds
         uses: actions/github-script@v9
         with:
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const keepBuilds = 10;
+            const keepRunRecords = 10;
+            const keepArtifacts = 5;
             const maxAgeMs = 24 * 60 * 60 * 1000;
             const now = Date.now();
             const buildWorkflowNames = new Set(["Android CI", "Release for RuStore"]);
@@ -39,33 +45,59 @@ jobs:
             }
 
             const completedRuns = runs
-              .filter(run => run.status === "completed")
+              .filter(run => run.status === "completed" && buildWorkflowNames.has(run.name))
               .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
 
-            // Keep the 10 newest completed app builds even if they are older than 24h.
-            // Cleanup workflow runs do not count as app builds.
-            const buildRuns = completedRuns.filter(run => buildWorkflowNames.has(run.name));
-            const keepBuildIds = new Set(buildRuns.slice(0, keepBuilds).map(run => run.id));
+            // Keep 10 run records for history, independently from APK artifact retention.
+            const keepRunIds = new Set(completedRuns.slice(0, keepRunRecords).map(run => run.id));
 
+            // Preserve downloadable artifacts only for the 5 newest successful main-branch builds.
+            // This caps the expected APK footprint at roughly 5 x 76 MiB.
+            const successfulMainBuilds = completedRuns.filter(run =>
+              run.head_branch === "main" && run.conclusion === "success"
+            );
+            const keepArtifactRunIds = new Set(
+              successfulMainBuilds.slice(0, keepArtifacts).map(run => run.id)
+            );
+
+            let deletedArtifacts = 0;
             let deletedRuns = 0;
+
             for (const run of completedRuns) {
+              try {
+                const { data } = await github.rest.actions.listWorkflowRunArtifacts({
+                  owner, repo, run_id: run.id, per_page: 100
+                });
+
+                if (!keepArtifactRunIds.has(run.id)) {
+                  for (const artifact of data.artifacts) {
+                    try {
+                      await github.rest.actions.deleteArtifact({
+                        owner, repo, artifact_id: artifact.id
+                      });
+                      deletedArtifacts++;
+                      core.info(`Deleted artifact ${artifact.name} from run ${run.run_number}`);
+                    } catch (error) {
+                      core.warning(`Could not delete artifact ${artifact.id}: ${error.message}`);
+                    }
+                  }
+                }
+              } catch (error) {
+                core.warning(`Could not inspect artifacts for run ${run.id}: ${error.message}`);
+              }
+
               const ageMs = now - Date.parse(run.created_at);
-              if (ageMs <= maxAgeMs) continue;
-              if (buildWorkflowNames.has(run.name) && keepBuildIds.has(run.id)) continue;
+              if (ageMs <= maxAgeMs || keepRunIds.has(run.id)) continue;
 
               try {
-                await github.rest.actions.deleteWorkflowRun({
-                  owner, repo, run_id: run.id
-                });
+                await github.rest.actions.deleteWorkflowRun({ owner, repo, run_id: run.id });
                 deletedRuns++;
-                core.info(`Deleted old workflow run ${run.id} (${run.name}), age=${Math.round(ageMs / 3600000)}h`);
               } catch (error) {
                 core.warning(`Could not delete workflow run ${run.id}: ${error.message}`);
               }
             }
 
-            // Keep the 10 newest debug prereleases. Delete older debug prereleases
-            // only after 24h. Production releases are never touched.
+            // Keep the 10 newest debug prereleases; never touch production releases.
             const { data: allReleases } = await github.rest.repos.listReleases({
               owner, repo, per_page: 100
             });
@@ -76,24 +108,19 @@ jobs:
             let deletedReleases = 0;
             for (const [index, release] of debugReleases.entries()) {
               const ageMs = now - Date.parse(release.created_at);
-              if (ageMs <= maxAgeMs || index < keepBuilds) continue;
+              if (ageMs <= maxAgeMs || index < keepRunRecords) continue;
 
               try {
-                await github.rest.repos.deleteRelease({
-                  owner, repo, release_id: release.id
-                });
+                await github.rest.repos.deleteRelease({ owner, repo, release_id: release.id });
                 try {
-                  await github.rest.git.deleteRef({
-                    owner, repo, ref: `tags/${release.tag_name}`
-                  });
+                  await github.rest.git.deleteRef({ owner, repo, ref: `tags/${release.tag_name}` });
                 } catch (error) {
                   if (error.status !== 404) throw error;
                 }
                 deletedReleases++;
-                core.info(`Deleted old debug release ${release.tag_name}`);
               } catch (error) {
                 core.warning(`Could not delete debug release ${release.tag_name}: ${error.message}`);
               }
             }
 
-            core.notice(`Cleanup complete. Kept ${Math.min(buildRuns.length, keepBuilds)} recent app builds. Deleted ${deletedRuns} old workflow runs and ${deletedReleases} old debug releases.`);
+            core.notice(`Cleanup complete. Kept ${Math.min(completedRuns.length, keepRunRecords)} run records and ${Math.min(successfulMainBuilds.length, keepArtifacts)} downloadable build artifacts; deleted ${deletedArtifacts} artifacts, ${deletedRuns} old run records, and ${deletedReleases} debug releases.`);
