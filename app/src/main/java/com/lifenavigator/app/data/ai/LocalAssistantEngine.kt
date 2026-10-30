@@ -3,6 +3,8 @@ package com.lifenavigator.app.data.ai
 import android.content.Context
 import com.lifenavigator.app.data.local.BudgetStorage
 import com.lifenavigator.app.data.local.PlacesCache
+import com.lifenavigator.app.data.local.TaskStorage
+import com.lifenavigator.app.data.model.TaskPriority
 import com.lifenavigator.app.data.model.NeedCategory
 import java.time.LocalDate
 import java.time.YearMonth
@@ -19,6 +21,50 @@ object LocalAssistantEngine {
 
     fun reply(context: Context, userText: String): String {
         val question = userText.lowercase(Locale.ROOT)
+        val taskStorage = TaskStorage(context)
+        val taskItems = taskStorage.load()
+
+        if (listOf("мои задачи", "список задач", "что по задачам", "какие задачи", "что мне нужно сделать", "что осталось сделать").any(question::contains)) {
+            val active = taskItems.filterNot { it.isCompleted }
+            if (active.isEmpty()) return "Активных задач пока нет. Если появится поручение, просто скажи: «Добавь задачу…»."
+            val overdue = active.filter { it.dueAtEpochMillis != null && it.dueAtEpochMillis < System.currentTimeMillis() }
+            val lines = active.take(10).joinToString("\\n") { task ->
+                val mark = if (task.priority == TaskPriority.HIGH) "❗ " else ""
+                mark + "• " + task.title
+            }
+            return buildString {
+                append("Активных задач: ${active.size}.")
+                if (overdue.isNotEmpty()) append(" Просрочено: ${overdue.size}.")
+                append("\\n")
+                append(lines)
+                if (active.size > 10) append("\\nИ ещё ${active.size - 10} задач.")
+            }
+        }
+
+        val taskCreationCue = listOf(
+            "добавь задачу", "создай задачу", "запиши задачу", "напомни", "не забудь",
+            "надо сделать", "нужно сделать", "мне нужно", "мне надо"
+        ).any(question::contains)
+        if (taskCreationCue) {
+            var title = userText.trim()
+                .replace(Regex("(?i)^\\\\s*(добавь задачу|создай задачу|запиши задачу|напомни мне|напомни|не забудь|надо сделать|нужно сделать|мне нужно|мне надо)\\\\s*"), "")
+                .trim()
+                .trimStart(':', ',', '-', ' ')
+            if (title.isBlank()) return "Что именно нужно добавить в задачи?"
+            val now = System.currentTimeMillis()
+            val dueAt = when {
+                "послезавтра" in question -> java.time.LocalDate.now().plusDays(2).atTime(9, 0).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+                "завтра" in question -> java.time.LocalDate.now().plusDays(1).atTime(9, 0).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+                "сегодня" in question -> java.time.LocalDate.now().atTime(18, 0).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+                else -> null
+            }
+            val priority = if (listOf("срочно", "важно", "обязательно").any(question::contains)) TaskPriority.HIGH else TaskPriority.NORMAL
+            val task = taskStorage.add(title, dueAt = dueAt, reminderAt = dueAt, priority = priority)
+            val dueText = dueAt?.let {
+                " Срок поставил: " + java.text.SimpleDateFormat("dd.MM HH:mm", Locale.getDefault()).format(java.util.Date(it)) + "."
+            } ?: ""
+            return "Добавил задачу: «${task.title}».$dueText Открой вкладку «Задачи», чтобы посмотреть и отметить выполнение."
+        }
         val storage = BudgetStorage(context)
         val today = LocalDate.now()
         val month = YearMonth.from(today)
