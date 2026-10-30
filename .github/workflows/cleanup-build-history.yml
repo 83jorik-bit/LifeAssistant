@@ -5,8 +5,13 @@ on:
   # is cleared immediately after the repository housekeeping merge.
   push:
     branches: [ main ]
-  # GitHub scheduled workflows run from the default branch.
-  # Hourly cleanup enforces the 12-hour / 10-build policy with a small scheduling margin.
+  # Clean immediately after a debug or RuStore build completes.
+  workflow_run:
+    workflows:
+      - Android CI
+      - Release for RuStore
+    types: [ completed ]
+  # Hourly cleanup is a fallback if a workflow completion event is delayed.
   schedule:
     - cron: "17 * * * *"
   workflow_dispatch:
