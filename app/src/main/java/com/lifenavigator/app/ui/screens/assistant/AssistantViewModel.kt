@@ -126,7 +126,6 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
         _uiState.update { it.copy(messages = it.messages + userMessage, isReplying = true) }
 
         viewModelScope.launch {
-            var replyMode = "Автономный режим"
             val application = getApplication<Application>()
             val sessionToken = SessionStore.token.value
 
@@ -171,7 +170,7 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
                     is BackendResult.Failure -> {
                         replyMode = "Автономный режим · сервер недоступен"
                         LocalAssistantEngine.reply(application, trimmed) +
-                            "\\n\\nНе удалось обратиться к облачному ИИ. Никакие действия в приложении не выполнялись."
+                            "\n\nНе удалось обратиться к облачному ИИ. Никакие действия в приложении не выполнялись."
                     }
                     null -> {
                         replyMode = "Автономный режим"
