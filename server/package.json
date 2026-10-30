@@ -1,5 +1,5 @@
 {
-  "name": "lifenavigator-server",
+  "name": "lifeassistant-server",
   "version": "1.0.0",
   "description": "Сервер приложения LifeAssistant: проверяет вход через Яндекс ID / VK ID, хранит профиль, согласие и бюджет, а также безопасно проксирует запросы YandexGPT.",
   "private": true,
