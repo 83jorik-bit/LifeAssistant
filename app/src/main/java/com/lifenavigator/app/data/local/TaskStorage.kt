@@ -57,7 +57,10 @@ class TaskStorage(context: Context) {
     fun delete(id: String) = save(load().filterNot { it.id == id })
 
     @Synchronized
-    fun clearAll() = prefs.edit().remove(KEY_TASKS).apply()
+    fun clearAll() {
+        prefs.edit().remove(KEY_TASKS).apply()
+        AppDataChanges.tasksChanged()
+    }
 
     @Synchronized
     private fun save(tasks: List<TaskItem>) {
@@ -76,6 +79,7 @@ class TaskStorage(context: Context) {
             )
         }
         prefs.edit().putString(KEY_TASKS, array.toString()).apply()
+        AppDataChanges.tasksChanged()
     }
 
     private fun JSONObject.nullableLong(key: String): Long? =
