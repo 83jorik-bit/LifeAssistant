@@ -45,7 +45,7 @@ object VoiceCommandDispatcher {
         return number.groupValues[1].replace(Regex("[ \\u00A0]"), "").toIntOrNull()
     }
 
-    fun dispatch(context: Context, rawText: String): String? {
+    suspend fun dispatch(context: Context, rawText: String): String? {
         val text = rawText.trim()
         val q = text.lowercase(Locale.ROOT)
         val taskStorage = TaskStorage(context)
@@ -144,6 +144,68 @@ object VoiceCommandDispatcher {
             return "Событие «${event.title}» сохранено в календаре на ${date} в %02d:%02d. Напоминание — за 15 минут.".format(hour, minute)
         }
 
+        // Голосовое управление картой использует последнюю явно определённую точку.
+        // Фоновая геолокация не запрашивается: если координат нет, просим открыть карту.
+        val mapSettings = com.lifenavigator.app.data.local.AppSettings(context)
+        val mapCache = com.lifenavigator.app.data.local.PlacesCache(context)
+        val routeCue = listOf("построй маршрут", "проложи маршрут", "как добраться", "проведи меня")
+            .any(q::contains)
+        val openPlaceCue = listOf("открой место", "покажи место", "открой организацию", "открой на карте")
+            .any(q::contains)
+        val searchPlaceCue = listOf("найди ", "найти ", "поищи ", "покажи рядом", "что рядом", "какие рядом")
+            .any(q::contains)
+        if (routeCue || openPlaceCue) {
+            val places = mapCache.load()
+            val query = text.lowercase(Locale.ROOT)
+                .replace(Regex("(?i)построй маршрут|проложи маршрут|как добраться|проведи меня|открой место|покажи место|открой организацию|открой на карте|до"), "")
+                .trim().trim(' ', ',', '«', '»', '"')
+            val matches = places.filter { query.isNotBlank() &&
+                (it.name.contains(query, true) || it.address.contains(query, true)) }
+            if (matches.isEmpty()) return "Не нашёл это место в последнем поиске на карте. Сначала скажи «найди аптеку рядом» или обнови поиск на карте."
+            if (matches.size > 1) return "Нашёл несколько мест: " + matches.take(5).joinToString("; ") { it.name } + ". Уточни название."
+            val place = matches.single()
+            if (openPlaceCue && !routeCue) {
+                com.lifenavigator.app.ui.screens.map.YandexMapsLauncher.openPlaceCard(context, place)
+                return "Открываю «${place.name}» в Яндекс Картах."
+            }
+            val lat = mapSettings.lastUserLatitude
+            val lon = mapSettings.lastUserLongitude
+            val from = if (lat.isNaN() || lon.isNaN()) null else com.yandex.mapkit.geometry.Point(lat, lon)
+            if (from == null) return "Не знаю твоё текущее местоположение. Открой карту и нажми кнопку геолокации, затем повтори команду."
+            com.lifenavigator.app.ui.screens.map.YandexMapsLauncher.buildRouteInNavigator(context, from, place)
+            return "Строю маршрут до «${place.name}»."
+        }
+        if (searchPlaceCue) {
+            val lat = mapSettings.lastUserLatitude
+            val lon = mapSettings.lastUserLongitude
+            if (lat.isNaN() || lon.isNaN()) return "Чтобы искать реальные места рядом, сначала открой карту и нажми кнопку геолокации."
+            val normalized = q.replace("найди", "").replace("найти", "").replace("поищи", "")
+            val category = when {
+                listOf("аптек", "лекарств").any(normalized::contains) -> NeedCategory.PHARMACY
+                listOf("продукт", "супермаркет", "магазин").any(normalized::contains) -> NeedCategory.GROCERY
+                listOf("кафе", "ресторан", "кофейн").any(normalized::contains) -> NeedCategory.CAFE
+                listOf("одежд", "обув").any(normalized::contains) -> NeedCategory.CLOTHING
+                listOf("салон", "красот", "парикмах").any(normalized::contains) -> NeedCategory.BEAUTY
+                listOf("пункт выдачи", "пвз", "постамат").any(normalized::contains) -> NeedCategory.PICKUP_POINT
+                listOf("банкомат").any(normalized::contains) -> NeedCategory.ATM
+                listOf("останов", "метро", "транспорт", "вокзал").any(normalized::contains) -> NeedCategory.TRANSPORT
+                listOf("школ", "садик", "образован", "курс").any(normalized::contains) -> NeedCategory.EDUCATION
+                listOf("клиник", "врач", "больниц", "поликлиник").any(normalized::contains) -> NeedCategory.CLINIC
+                else -> null
+            } ?: return "Уточни, что искать: аптеку, продукты, кафе, одежду, салон красоты, пункт выдачи, банкомат, транспорт, образование или клинику."
+            val point = com.yandex.mapkit.geometry.Point(lat, lon)
+            val radius = mapSettings.searchRadiusMeters
+            val found = com.lifenavigator.app.data.repository.YandexSearchRepository.searchCategory(point, category, radius)
+            if (found.isEmpty()) return "В радиусе ${(radius / 1000f)} км ничего не найдено в категории «${category.displayName}». Можешь увеличить радиус в настройках карты."
+            val merged = (mapCache.load().filterNot { it.category == category } + found).distinctBy { it.id }
+            mapCache.save(merged)
+            return "Нашёл мест рядом: ${found.size}.\n" + found.take(8).joinToString("\n") {
+                "• ${it.name} — ${"%.1f".format(Locale("ru", "RU"), it.distanceKm)} км" +
+                    (if (it.rating > 0) ", рейтинг ${"%.1f".format(Locale("ru", "RU"), it.rating)}" else "") +
+                    (if (it.workingHours != null) ", ${it.workingHours}" else "")
+            } + "\nСкажи «построй маршрут до [название]» или «открой [название] на карте»."
+        }
+
         // Pending budget mutations are persisted separately and require an explicit confirmation.
         val budgetPrefs = context.getSharedPreferences("voice_budget_pending", Context.MODE_PRIVATE)
         val pendingRaw = budgetPrefs.getString("pending", null)
@@ -158,6 +220,17 @@ object VoiceCommandDispatcher {
                 ?: run { budgetPrefs.edit().remove("pending").apply(); return "Не удалось прочитать операцию. Ничего не сохранено." }
             val storage = com.lifenavigator.app.data.local.BudgetStorage(context)
             val amount = pending.optInt("amount", 0)
+            if (pending.optString("type") == "expense_delete") {
+                val expenseId = pending.optString("expenseId")
+                val expenses = storage.loadExpenses()
+                if (expenses.none { it.id == expenseId }) {
+                    budgetPrefs.edit().remove("pending").apply()
+                    return "Эта трата уже отсутствует. Ничего не изменено."
+                }
+                storage.saveExpenses(expenses.filterNot { it.id == expenseId })
+                budgetPrefs.edit().remove("pending").apply()
+                return "Трата удалена из бюджета."
+            }
             if (amount <= 0) return "Некорректная сумма. Ничего не сохранено."
             when (pending.optString("type")) {
                 "expense" -> {
@@ -190,6 +263,29 @@ object VoiceCommandDispatcher {
         }
         if (pendingRaw != null) return "Ожидаю подтверждение: скажи «да» или «отмена»."
         val expenseCue = listOf("добавь расход", "запиши расход", "учти расход").firstOrNull { q.startsWith(it) }
+        val deleteExpenseCue = listOf("удали расход", "удали трату", "убери расход", "убери трату").firstOrNull { q.startsWith(it) }
+        if (deleteExpenseCue != null) {
+            val amount = parseRubles(q) ?: return "Назови точную сумму удаляемой траты."
+            val storage = com.lifenavigator.app.data.local.BudgetStorage(context)
+            val categoryKey = when {
+                "продукт" in q || "магазин" in q || "еда" in q -> NeedCategory.GROCERY.name
+                "кафе" in q || "ресторан" in q || "кофе" in q -> NeedCategory.CAFE.name
+                "аптек" in q || "лекарств" in q -> NeedCategory.PHARMACY.name
+                "одежд" in q || "обув" in q -> NeedCategory.CLOTHING.name
+                "транспорт" in q || "такси" in q || "бензин" in q -> NeedCategory.TRANSPORT.name
+                else -> storage.loadCustomCategories().firstOrNull { q.contains(it.title.lowercase(Locale.ROOT)) }?.key
+            } ?: return "Уточни категорию удаляемой траты."
+            val candidates = storage.loadExpenses().filter {
+                it.amountRub == amount && it.categoryKey == categoryKey &&
+                    YearMonth.from(LocalDate.ofEpochDay(it.dateEpochDay)) == YearMonth.now()
+            }
+            if (candidates.isEmpty()) return "Не нашёл такую трату за текущий месяц. Ничего не удалено."
+            if (candidates.size > 1) return "Нашёл несколько трат по ${amount} ₽ в категории «${categoryTitle(categoryKey)}». Уточни дату в формате ДД.ММ."
+            val expense = candidates.single()
+            budgetPrefs.edit().putString("pending", JSONObject()
+                .put("type", "expense_delete").put("expenseId", expense.id).toString()).apply()
+            return "Удалить трату ${amount} ₽ из категории «${categoryTitle(categoryKey)}»? Скажи «да» или «отмена»."
+        }
         val incomeCue = listOf("добавь доход", "запиши доход", "учти доход", "установи доход", "измени доход").firstOrNull { q.startsWith(it) }
         val limitCue = listOf("установи лимит", "задай лимит", "измени лимит", "поставь лимит").firstOrNull { q.startsWith(it) }
         if (expenseCue != null || incomeCue != null || limitCue != null) {
