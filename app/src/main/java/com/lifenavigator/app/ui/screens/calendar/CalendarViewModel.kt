@@ -10,6 +10,8 @@ import com.lifenavigator.app.data.model.TaskItem
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.ZoneId
 
@@ -25,7 +27,12 @@ class CalendarViewModel(application: Application) : AndroidViewModel(application
     private val _state = MutableStateFlow(CalendarUiState())
     val state: StateFlow<CalendarUiState> = _state
 
-    init { refresh() }
+    init {
+        refresh()
+        viewModelScope.launch {
+            CalendarStorage.changes.collect { refresh() }
+        }
+    }
 
     fun selectDate(date: LocalDate) = _state.update { it.copy(selectedDate = date) }.also { refresh() }
 
