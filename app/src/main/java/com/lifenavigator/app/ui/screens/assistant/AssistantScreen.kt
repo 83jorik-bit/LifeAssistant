@@ -55,13 +55,13 @@ fun AssistantScreen(viewModel: AssistantViewModel = viewModel()) {
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
         }
     }
-    // Final speech recognition result is executed immediately. The user does not
-    // need to tap the Send button after speaking.
+    // Распознанная речь только попадает в поле ввода.
+    // Пауза или окончание фразы не запускают действие: пользователь проверяет текст
+    // и сам нажимает «Отправить». Изменяющие данные команды дополнительно требуют подтверждения.
     val onRecognized = rememberUpdatedState<(String) -> Unit> { recognized ->
-        input = ""
+        input = recognized
         voiceError = null
-        voiceStatus = "Команда распознана — выполняю"
-        viewModel.sendMessage(recognized)
+        voiceStatus = "Текст распознан — проверь его и нажми «Отправить»"
     }
 
     DisposableEffect(speechRecognizer) {
