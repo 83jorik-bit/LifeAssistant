@@ -53,6 +53,46 @@ object VoiceCommandDispatcher {
         val zone = ZoneId.systemDefault()
         val today = LocalDate.now(zone)
 
+        // Отложенные голосовые действия календаря и задач выполняются только после подтверждения.
+        val actionPrefs = context.getSharedPreferences("voice_action_pending", Context.MODE_PRIVATE)
+        val actionRaw = actionPrefs.getString("pending", null)
+        val actionYes = q in setOf("да", "да, выполнить", "выполни", "подтверждаю", "подтверждаю действие", "сохрани", "добавь")
+        val actionNo = q in setOf("нет", "отмена", "отмени", "не надо", "не выполняй", "отменить")
+        if (actionRaw != null && actionYes) {
+            val pending = runCatching { JSONObject(actionRaw) }.getOrNull()
+                ?: run { actionPrefs.edit().remove("pending").apply(); return "Не удалось прочитать подготовленное действие. Ничего не изменено." }
+            when (pending.optString("type")) {
+                "calendar_event" -> {
+                    val title = pending.optString("title")
+                    val startsAt = pending.optLong("startsAt", 0L)
+                    if (title.isBlank() || startsAt <= 0L) return "Не хватает данных события. Ничего не добавлено."
+                    val event = calendarStorage.add(title, startsAt)
+                    CalendarReminderScheduler.schedule(context, event)
+                    val saved = calendarStorage.load().any { it.id == event.id }
+                    actionPrefs.edit().remove("pending").apply()
+                    return if (saved) "Подтверждено. Событие «${event.title}» действительно сохранено в календаре." else "Не удалось подтвердить сохранение события. Проверь календарь."
+                }
+                "task" -> {
+                    val title = pending.optString("title")
+                    if (title.isBlank()) return "Не указано название задачи. Ничего не добавлено."
+                    val dueAt = pending.optLong("dueAt", 0L).takeIf { it > 0L }
+                    val priority = if (pending.optString("priority") == "HIGH") TaskPriority.HIGH else TaskPriority.NORMAL
+                    val task = taskStorage.add(title, dueAt = dueAt, reminderAt = dueAt, priority = priority)
+                    if (dueAt != null) TaskReminderScheduler.schedule(context, task)
+                    val saved = taskStorage.load().any { it.id == task.id }
+                    actionPrefs.edit().remove("pending").apply()
+                    return if (saved) "Подтверждено. Задача «${task.title}» действительно добавлена." else "Не удалось подтвердить сохранение задачи. Проверь список задач."
+                }
+            }
+            actionPrefs.edit().remove("pending").apply()
+            return "Подготовленное действие больше не поддерживается. Ничего не изменено."
+        }
+        if (actionRaw != null && actionNo) {
+            actionPrefs.edit().remove("pending").apply()
+            return "Отменено. Никакие изменения не внесены."
+        }
+        if (actionRaw != null) return "Я пока ничего не менял. Подготовлено действие. Скажи «подтверждаю» или «отмена»."
+
         val listTasks = listOf("мои задачи", "список задач", "покажи задачи", "какие задачи", "что по задачам", "что мне нужно сделать", "что осталось сделать", "план на день", "план на сегодня", "есть ли просроченные").any(q::contains)
         if (listTasks) {
             val tasks = taskStorage.load().filterNot { it.isCompleted }
@@ -84,10 +124,11 @@ object VoiceCommandDispatcher {
             val dueAt = date?.atTime(time?.groupValues?.get(1)?.toIntOrNull() ?: 9, time?.groupValues?.get(2)?.toIntOrNull() ?: 0)
                 ?.atZone(zone)?.toInstant()?.toEpochMilli()
             val priority = if (listOf("срочно", "важно", "обязательно").any(q::contains)) TaskPriority.HIGH else TaskPriority.NORMAL
-            val task = taskStorage.add(title, dueAt = dueAt, reminderAt = dueAt, priority = priority)
-            if (dueAt != null) TaskReminderScheduler.schedule(context, task)
             val due = dueAt?.let { " Срок: ${Instant.ofEpochMilli(it).atZone(zone).format(DateTimeFormatter.ofPattern("dd.MM в HH:mm"))}." }.orEmpty()
-            return "Задача «${task.title}» сохранена.$due"
+            actionPrefs.edit().putString("pending", JSONObject()
+                .put("type", "task").put("title", title).put("dueAt", dueAt ?: 0L)
+                .put("priority", priority.name).toString()).apply()
+            return "Я понял задачу: «$title».$due Пока не добавляю её. Скажи «подтверждаю», чтобы сохранить, или «отмена»."
         }
 
         val completeCue = listOf("отметь выполненной задачу", "отметь выполненной", "заверши задачу", "выполни задачу", "закрой задачу").firstOrNull { q.startsWith(it) }
@@ -139,9 +180,9 @@ object VoiceCommandDispatcher {
                 .replace(time.value, "").trim().trim(',', ':', '-', ' ')
             if (title.isBlank()) return "Как назвать событие?"
             val start = date.atTime(hour, minute).atZone(zone).toInstant().toEpochMilli()
-            val event = calendarStorage.add(title, start)
-            CalendarReminderScheduler.schedule(context, event)
-            return "Событие «${event.title}» сохранено в календаре на ${date} в %02d:%02d. Напоминание — за 15 минут.".format(hour, minute)
+            actionPrefs.edit().putString("pending", JSONObject()
+                .put("type", "calendar_event").put("title", title).put("startsAt", start).toString()).apply()
+            return "Подготовил событие «$title» на ${date} в %02d:%02d. Пока не добавляю его. Скажи «подтверждаю», чтобы внести в календарь, или «отмена».".format(hour, minute)
         }
 
         // Голосовое управление картой использует последнюю явно определённую точку.
