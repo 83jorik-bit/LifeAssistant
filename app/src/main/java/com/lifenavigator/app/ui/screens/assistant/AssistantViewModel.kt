@@ -131,15 +131,27 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
 
             // Сначала исполняем поддерживаемые действия через реальные модули приложения.
             // YandexGPT используется для понимания/диалога, но не может заявить об изменении данных.
-            val actionResult = runCatching { VoiceCommandDispatcher.dispatch(application, trimmed) }
+            val actionResult = VoiceCommandDispatcher.dispatchResult(application, trimmed)
             val reply: String
             var replyMode = "Автономный режим"
-            if (actionResult.isFailure) {
-                reply = "Не удалось выполнить действие: ${actionResult.exceptionOrNull()?.message ?: "неизвестная ошибка"}. Данные приложения не подтверждены."
-            } else if (actionResult.getOrNull() != null) {
-                reply = actionResult.getOrNull()!!
-                replyMode = "Функция приложения"
-            } else {
+            when (actionResult) {
+                is com.lifenavigator.app.data.ai.AssistantActionResult.Completed -> {
+                    reply = actionResult.message
+                    replyMode = "Функция приложения"
+                }
+                is com.lifenavigator.app.data.ai.AssistantActionResult.NeedsConfirmation -> {
+                    reply = actionResult.message
+                    replyMode = "Ожидает подтверждения"
+                }
+                is com.lifenavigator.app.data.ai.AssistantActionResult.NeedsClarification -> {
+                    reply = actionResult.message
+                    replyMode = "Требуется уточнение"
+                }
+                is com.lifenavigator.app.data.ai.AssistantActionResult.Failed -> {
+                    reply = actionResult.message
+                    replyMode = "Ошибка выполнения"
+                }
+                com.lifenavigator.app.data.ai.AssistantActionResult.NotHandled -> {
                 val cloudResult = if (YandexGptRepository.isConfigured) {
                     val systemPrompt = AssistantContext.build(application)
                     val history = _uiState.value.messages
@@ -176,6 +188,7 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
                         replyMode = "Автономный режим"
                         LocalAssistantEngine.reply(application, trimmed)
                     }
+                }
                 }
             }
 
