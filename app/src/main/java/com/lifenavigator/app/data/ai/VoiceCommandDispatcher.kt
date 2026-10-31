@@ -108,7 +108,7 @@ object VoiceCommandDispatcher {
             return "Активных задач: ${tasks.size}. Просрочено: ${overdue.size}.\n$lines"
         }
 
-        val createTaskCue = listOf("добавь задачу", "создай задачу", "запиши задачу", "напомни мне", "напомни", "не забудь", "поставь задачу", "добавь в задачи").firstOrNull { q.startsWith(it) }
+        val createTaskCue = listOf("добавь задачу", "создай задачу", "запиши задачу", "напомни мне", "напомни", "не забудь", "поставь задачу", "добавь в задачи", "надо сделать", "нужно сделать", "мне нужно", "мне надо").firstOrNull { q.startsWith(it) }
         if (createTaskCue != null) {
             var title = text.substring(createTaskCue.length).trim().trimStart(':', ',', '-', ' ')
             val date = when {
