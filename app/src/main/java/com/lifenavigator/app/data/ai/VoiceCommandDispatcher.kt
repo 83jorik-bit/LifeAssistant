@@ -56,7 +56,7 @@ object VoiceCommandDispatcher {
         // Отложенные голосовые действия календаря и задач выполняются только после подтверждения.
         val actionPrefs = context.getSharedPreferences("voice_action_pending", Context.MODE_PRIVATE)
         val actionRaw = actionPrefs.getString("pending", null)
-        val actionYes = q in setOf("да", "да, выполнить", "выполни", "подтверждаю", "подтверждаю действие", "сохрани", "добавь")
+        val actionYes = q in setOf("да", "да, выполнить", "выполни", "подтверждаю", "подтверждаю действие", "сохрани")
         val actionNo = q in setOf("нет", "отмена", "отмени", "не надо", "не выполняй", "отменить")
         if (actionRaw != null && actionYes) {
             val pending = runCatching { JSONObject(actionRaw) }.getOrNull()
