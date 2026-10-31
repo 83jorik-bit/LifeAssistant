@@ -85,7 +85,7 @@ fun AssistantScreen(viewModel: AssistantViewModel = viewModel()) {
                         .onFailure {
                             voiceSessionActive = false
                             voiceStatus = null
-                            voiceError = "Не удалось продолжить диктовку: \${it.message ?: "ошибка распознавания"}"
+                            voiceError = "Не удалось продолжить диктовку: ${it.message ?: "ошибка распознавания"}"
                         }
                 }
             }, 350L)
@@ -123,6 +123,7 @@ fun AssistantScreen(viewModel: AssistantViewModel = viewModel()) {
                     } else {
                         voiceSessionActive = false
                         partialSpeech = ""
+                        input = committedSpeech
                         voiceStatus = null
                         voiceError = when (error) {
                             SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS ->
@@ -177,7 +178,7 @@ fun AssistantScreen(viewModel: AssistantViewModel = viewModel()) {
                 .onFailure {
                     voiceSessionActive = false
                     voiceStatus = null
-                    voiceError = "Не удалось запустить микрофон: \${it.message ?: "ошибка распознавания"}"
+                    voiceError = "Не удалось запустить микрофон: ${it.message ?: "ошибка распознавания"}"
                 }
         } else {
             voiceSessionActive = false
@@ -187,7 +188,7 @@ fun AssistantScreen(viewModel: AssistantViewModel = viewModel()) {
             runCatching { speechRecognizer.stopListening() }
                 .onFailure {
                     voiceStatus = null
-                    voiceError = "Не удалось завершить диктовку: \${it.message ?: "ошибка"}"
+                    voiceError = "Не удалось завершить диктовку: ${it.message ?: "ошибка"}"
                 }
         }
     }
