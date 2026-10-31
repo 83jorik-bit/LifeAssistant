@@ -23,6 +23,28 @@ import java.util.Locale
  * Ответы об изменениях формируются здесь только после успешной записи в хранилище.
  */
 object VoiceCommandDispatcher {
+    private fun parseRubles(text: String): Int? {
+        val normalized = text.lowercase(Locale.ROOT)
+        val thousands = Regex("(\\d{1,3}(?:[ \\u00A0]\\d{3})*|\\d+)\\s*(тыс(?:яч(?:а|и)?)?\\.?|тысяч(?:а|и)?)").find(normalized)
+        if (thousands != null) {
+            val base = thousands.groupValues[1].replace(Regex("[ \\u00A0]"), "").toLongOrNull() ?: return null
+            val rest = normalized.substring(thousands.range.last + 1)
+            val extra = Regex("\\b(\\d{1,3})\\b").find(rest)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+            return (base * 1000L + extra).takeIf { it in 1..Int.MAX_VALUE.toLong() }?.toInt()
+        }
+        val words = Regex("\\b(одна|одну|один|две|два|три|четыре|пять|шесть|семь|восемь|девять|десять)\\s+тысяч(?:а|и)?\\b").find(normalized)
+        if (words != null) {
+            val base = when (words.groupValues[1]) {
+                "одна", "одну", "один" -> 1; "две", "два" -> 2; "три" -> 3; "четыре" -> 4
+                "пять" -> 5; "шесть" -> 6; "семь" -> 7; "восемь" -> 8; "девять" -> 9; else -> 10
+            }
+            val extra = Regex("\\b(\\d{1,3})\\b").find(normalized.substring(words.range.last + 1))?.groupValues?.get(1)?.toIntOrNull() ?: 0
+            return base * 1000 + extra
+        }
+        val number = Regex("(?<!\\d)(\\d{1,3}(?:[ \\u00A0]\\d{3})+|\\d{1,9})(?!\\d)").find(normalized) ?: return null
+        return number.groupValues[1].replace(Regex("[ \\u00A0]"), "").toIntOrNull()
+    }
+
     fun dispatch(context: Context, rawText: String): String? {
         val text = rawText.trim()
         val q = text.lowercase(Locale.ROOT)
@@ -152,6 +174,13 @@ object VoiceCommandDispatcher {
                     budgetPrefs.edit().remove("pending").apply()
                     return "Доход $amount ₽ сохранён для текущего месяца."
                 }
+                "limit" -> {
+                    val category = pending.optString("category")
+                    if (category.isBlank()) return "Не указана категория лимита. Ничего не изменено."
+                    storage.saveLimit(category, amount)
+                    budgetPrefs.edit().remove("pending").apply()
+                    return "Лимит «${categoryTitle(category)}» установлен: $amount ₽."
+                }
             }
             return "Неизвестный тип операции. Ничего не сохранено."
         }
@@ -161,13 +190,16 @@ object VoiceCommandDispatcher {
         }
         if (pendingRaw != null) return "Ожидаю подтверждение: скажи «да» или «отмена»."
         val expenseCue = listOf("добавь расход", "запиши расход", "учти расход").firstOrNull { q.startsWith(it) }
-        val incomeCue = listOf("добавь доход", "запиши доход", "учти доход").firstOrNull { q.startsWith(it) }
-        if (expenseCue != null || incomeCue != null) {
-            val amount = Regex("(?<!\\d)\\d{1,9}(?!\\d)").find(q)?.value?.toIntOrNull()
-                ?: return "Не распознал сумму. Например: «Добавь расход 750 рублей на продукты»."
+        val incomeCue = listOf("добавь доход", "запиши доход", "учти доход", "установи доход", "измени доход").firstOrNull { q.startsWith(it) }
+        val limitCue = listOf("установи лимит", "задай лимит", "измени лимит", "поставь лимит").firstOrNull { q.startsWith(it) }
+        if (expenseCue != null || incomeCue != null || limitCue != null) {
+            val amount = parseRubles(q)
+                ?: return "Не распознал сумму. Например: «Добавь расход 2 тысячи рублей на продукты» или «2 500 рублей»."
             if (amount <= 0) return "Сумма должна быть больше нуля."
             val isExpense = expenseCue != null
-            val category = if (!isExpense) null else when {
+            val isLimit = limitCue != null
+            val storage = com.lifenavigator.app.data.local.BudgetStorage(context)
+            val category = if (!isExpense && !isLimit) null else when {
                 listOf("продукт", "магазин", "еда").any(q::contains) -> NeedCategory.GROCERY.name
                 listOf("кафе", "ресторан", "кофе").any(q::contains) -> NeedCategory.CAFE.name
                 listOf("аптек", "лекарств").any(q::contains) -> NeedCategory.PHARMACY.name
@@ -176,13 +208,25 @@ object VoiceCommandDispatcher {
                 listOf("красот", "салон").any(q::contains) -> NeedCategory.BEAUTY.name
                 listOf("образован", "курс", "обучен").any(q::contains) -> NeedCategory.EDUCATION.name
                 listOf("клиник", "врач", "медицин").any(q::contains) -> NeedCategory.CLINIC.name
-                else -> null
+                else -> storage.loadCustomCategories().firstOrNull { q.contains(it.title.lowercase(Locale.ROOT)) }?.key
             }
-            if (isExpense && category == null) return "Уточни категорию расхода: продукты, кафе, аптека, одежда, транспорт, красота, образование или медицина. Ничего не сохранено."
-            val pending = JSONObject().put("type", if (isExpense) "expense" else "income").put("amount", amount).put("category", category ?: "")
+            if ((isExpense || isLimit) && category == null) return "Уточни категорию: продукты, кафе, аптека, одежда, транспорт, красота, образование или медицина. Ничего не изменено."
+            val type = when { isExpense -> "expense"; isLimit -> "limit"; else -> "income" }
+            val pending = JSONObject().put("type", type).put("amount", amount).put("category", category ?: "")
+            if (type == "income") pending.put("previousAmount", storage.loadIncome()[YearMonth.now().toString()] ?: 0)
+            if (type == "limit") pending.put("previousAmount", storage.loadLimits()[category] ?: 0)
             budgetPrefs.edit().putString("pending", pending.toString()).apply()
-            return if (isExpense) "Распознал расход: $amount ₽, категория «${categoryTitle(category!!)}». Сохранить? Скажи «да» или «отмена»."
-            else "Распознал доход: $amount ₽ за текущий месяц. Сохранить? Скажи «да» или «отмена»."
+            return when (type) {
+                "expense" -> "Распознал расход: $amount ₽, категория «${categoryTitle(category!!)}». Сохранить? Скажи «да» или «отмена»."
+                "limit" -> {
+                    val previous = pending.optInt("previousAmount", 0)
+                    "Установить лимит «${categoryTitle(category!!)}» $amount ₽${if (previous > 0) " вместо текущего $previous ₽" else ""}? Скажи «да» или «отмена»."
+                }
+                else -> {
+                    val previous = pending.optInt("previousAmount", 0)
+                    "Установить общий доход за текущий месяц $amount ₽${if (previous > 0) " вместо текущего $previous ₽" else ""}? Скажи «да» или «отмена»."
+                }
+            }
         }
         // Чтение бюджета и сохранённых мест выполняет существующий локальный движок,
         // который обращается к реальным BudgetStorage и PlacesCache.
