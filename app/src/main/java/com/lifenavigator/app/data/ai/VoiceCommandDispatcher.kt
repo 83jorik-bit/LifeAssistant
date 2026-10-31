@@ -23,6 +23,38 @@ import java.util.Locale
  * Ответы об изменениях формируются здесь только после успешной записи в хранилище.
  */
 object VoiceCommandDispatcher {
+    /**
+     * Typed entry point used by the assistant UI. Legacy command parsing stays
+     * in dispatch() for now; this adapter makes the execution state explicit.
+     */
+    suspend fun dispatchResult(context: Context, rawText: String): AssistantActionResult {
+        return try {
+            val message = dispatch(context, rawText)
+                ?: return AssistantActionResult.NotHandled
+            val pending = context.getSharedPreferences("voice_action_pending", Context.MODE_PRIVATE)
+                .getString("pending", null)
+            when {
+                pending != null -> AssistantActionResult.NeedsConfirmation(message)
+                listOf(
+                    "что именно", "какое событие", "назови задачу", "назови категорию",
+                    "уточни", "неоднознач", "не нашёл задачу", "не нашел задачу",
+                    "не удалось определить"
+                ).any { message.contains(it, ignoreCase = true) } ->
+                    AssistantActionResult.NeedsClarification(message)
+                listOf(
+                    "не удалось", "ошибка", "ничего не добавлено", "ничего не изменено",
+                    "не сохранено", "не выполнено"
+                ).any { message.contains(it, ignoreCase = true) } ->
+                    AssistantActionResult.Failed(message)
+                else -> AssistantActionResult.Completed(message)
+            }
+        } catch (error: Exception) {
+            AssistantActionResult.Failed(
+                "Не удалось выполнить действие: ${error.message ?: "неизвестная ошибка"}. Изменение данных не подтверждено."
+            )
+        }
+    }
+
     private fun parseRubles(text: String): Int? {
         val normalized = text.lowercase(Locale.ROOT)
         val thousands = Regex("(\\d{1,3}(?:[ \\u00A0]\\d{3})*|\\d+)\\s*(тыс(?:яч(?:а|и)?)?\\.?|тысяч(?:а|и)?)").find(normalized)
