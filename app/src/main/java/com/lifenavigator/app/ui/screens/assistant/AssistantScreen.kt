@@ -4,6 +4,8 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -16,6 +18,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.*
@@ -36,6 +39,10 @@ fun AssistantScreen(viewModel: AssistantViewModel = viewModel()) {
     var input by remember { mutableStateOf("") }
     var voiceError by remember { mutableStateOf<String?>(null) }
     var voiceStatus by remember { mutableStateOf<String?>(null) }
+    var voiceSessionActive by remember { mutableStateOf(false) }
+    var committedSpeech by remember { mutableStateOf("") }
+    var partialSpeech by remember { mutableStateOf("") }
+    val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val context = LocalContext.current
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -51,17 +58,38 @@ fun AssistantScreen(viewModel: AssistantViewModel = viewModel()) {
         Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ru-RU")
-            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
-            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2500L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1800L)
         }
     }
-    // Распознанная речь только попадает в поле ввода.
-    // Пауза или окончание фразы не запускают действие: пользователь проверяет текст
-    // и сам нажимает «Отправить». Изменяющие данные команды дополнительно требуют подтверждения.
-    val onRecognized = rememberUpdatedState<(String) -> Unit> { recognized ->
-        input = recognized
-        voiceError = null
-        voiceStatus = "Текст распознан — проверь его и нажми «Отправить»"
+    // Диктовка — это сессия, а не одна короткая фраза. Результаты каждого сегмента
+    // накапливаются; пауза/таймаут распознавателя не отправляют сообщение и не теряют текст.
+    val appendRecognized = rememberUpdatedState<(String) -> Unit> { recognized ->
+        val clean = recognized.trim()
+        if (clean.isNotBlank()) {
+            committedSpeech = listOf(committedSpeech.trim(), clean)
+                .filter { it.isNotBlank() }.joinToString(" ")
+            partialSpeech = ""
+            input = committedSpeech
+            voiceError = null
+        }
+    }
+
+    val scheduleNextSegment = rememberUpdatedState<() -> Unit> {
+        if (voiceSessionActive && speechRecognizer != null) {
+            mainHandler.postDelayed({
+                if (voiceSessionActive) {
+                    runCatching { speechRecognizer.startListening(speechIntent) }
+                        .onFailure {
+                            voiceSessionActive = false
+                            voiceStatus = null
+                            voiceError = "Не удалось продолжить диктовку: \${it.message ?: "ошибка распознавания"}"
+                        }
+                }
+            }, 350L)
+        }
     }
 
     DisposableEffect(speechRecognizer) {
@@ -71,39 +99,66 @@ fun AssistantScreen(viewModel: AssistantViewModel = viewModel()) {
                     val recognized = results
                         ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                         ?.firstOrNull()
-                    if (recognized.isNullOrBlank()) {
-                        voiceError = "Не удалось распознать речь. Попробуйте ещё раз."
-                        voiceStatus = null
+                    if (!recognized.isNullOrBlank()) {
+                        appendRecognized.value(recognized)
+                    }
+                    if (voiceSessionActive) {
+                        voiceStatus = "Пауза. Можешь продолжить говорить или нажать «Готово»."
+                        scheduleNextSegment.value()
                     } else {
-                        onRecognized.value(recognized)
+                        partialSpeech = ""
+                        input = committedSpeech
+                        voiceStatus = if (committedSpeech.isBlank()) null
+                            else "Диктовка завершена — проверь текст и нажми «Отправить»"
                     }
                 }
 
                 override fun onError(error: Int) {
-                    voiceStatus = null
-                    voiceError = when (error) {
-                        SpeechRecognizer.ERROR_NO_MATCH,
-                        SpeechRecognizer.ERROR_SPEECH_TIMEOUT ->
-                            "Речь не распознана. Попробуйте ещё раз."
-                        SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS ->
-                            "Для голосового ввода нужно разрешение на микрофон."
-                        else -> "Ошибка распознавания речи (код $error)."
+                    if (voiceSessionActive && error in setOf(
+                            SpeechRecognizer.ERROR_SPEECH_TIMEOUT,
+                            SpeechRecognizer.ERROR_NO_MATCH
+                        )) {
+                        voiceStatus = "Пауза. Я сохраняю распознанный текст — можешь продолжить."
+                        scheduleNextSegment.value()
+                    } else {
+                        voiceSessionActive = false
+                        partialSpeech = ""
+                        voiceStatus = null
+                        voiceError = when (error) {
+                            SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS ->
+                                "Для голосового ввода нужно разрешение на микрофон."
+                            SpeechRecognizer.ERROR_RECOGNIZER_BUSY ->
+                                "Распознаватель занят. Подожди немного и попробуй снова."
+                            SpeechRecognizer.ERROR_NETWORK,
+                            SpeechRecognizer.ERROR_NETWORK_TIMEOUT ->
+                                "Проблема с сетью распознавания. Уже распознанный текст сохранён."
+                            else -> "Ошибка распознавания речи (код $error). Уже распознанный текст сохранён."
+                        }
                     }
                 }
 
                 override fun onReadyForSpeech(params: Bundle?) {
                     voiceError = null
-                    voiceStatus = "Слушаю…"
+                    voiceStatus = "Слушаю. Можно делать паузы — текст не отправляется автоматически."
                 }
                 override fun onBeginningOfSpeech() { voiceStatus = "Говорите…" }
                 override fun onRmsChanged(rmsdB: Float) {}
                 override fun onBufferReceived(buffer: ByteArray?) {}
-                override fun onEndOfSpeech() { voiceStatus = "Распознаю команду…" }
-                override fun onPartialResults(partialResults: Bundle?) {}
+                override fun onEndOfSpeech() { voiceStatus = "Обрабатываю фрагмент диктовки…" }
+                override fun onPartialResults(partialResults: Bundle?) {
+                    val partial = partialResults
+                        ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                        ?.firstOrNull().orEmpty()
+                    partialSpeech = partial
+                    input = listOf(committedSpeech.trim(), partial.trim())
+                        .filter { it.isNotBlank() }.joinToString(" ")
+                }
                 override fun onEvent(eventType: Int, params: Bundle?) {}
             })
         }
         onDispose {
+            voiceSessionActive = false
+            mainHandler.removeCallbacksAndMessages(null)
             runCatching { speechRecognizer?.cancel() }
             speechRecognizer?.destroy()
         }
@@ -113,12 +168,26 @@ fun AssistantScreen(viewModel: AssistantViewModel = viewModel()) {
         voiceError = null
         if (speechRecognizer == null) {
             voiceError = "На устройстве недоступно распознавание речи."
-        } else {
-            voiceStatus = "Слушаю…"
+        } else if (!voiceSessionActive) {
+            committedSpeech = input.trim()
+            partialSpeech = ""
+            voiceSessionActive = true
+            voiceStatus = "Слушаю… Говори в удобном темпе; для завершения нажми «Готово»."
             runCatching { speechRecognizer.startListening(speechIntent) }
                 .onFailure {
+                    voiceSessionActive = false
                     voiceStatus = null
-                    voiceError = "Не удалось запустить микрофон: ${it.message ?: "ошибка распознавания"}"
+                    voiceError = "Не удалось запустить микрофон: \${it.message ?: "ошибка распознавания"}"
+                }
+        } else {
+            voiceSessionActive = false
+            mainHandler.removeCallbacksAndMessages(null)
+            partialSpeech = ""
+            voiceStatus = "Завершаю диктовку…"
+            runCatching { speechRecognizer.stopListening() }
+                .onFailure {
+                    voiceStatus = null
+                    voiceError = "Не удалось завершить диктовку: \${it.message ?: "ошибка"}"
                 }
         }
     }
@@ -196,7 +265,10 @@ fun AssistantScreen(viewModel: AssistantViewModel = viewModel()) {
                     }
                 }
             ) {
-                Icon(Icons.Filled.Mic, contentDescription = "Сказать команду")
+                Icon(
+                    if (voiceSessionActive) Icons.Filled.Stop else Icons.Filled.Mic,
+                    contentDescription = if (voiceSessionActive) "Завершить диктовку" else "Начать диктовку"
+                )
             }
             IconButton(onClick = {
                 if (input.isNotBlank()) {
@@ -213,6 +285,12 @@ fun AssistantScreen(viewModel: AssistantViewModel = viewModel()) {
                 text = voiceError.orEmpty(),
                 color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp)
+            )
+            voiceSessionActive -> Text(
+                text = "Идёт диктовка. Паузы допустимы; для завершения нажми кнопку остановки.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp)
             )
             state.isReplying -> Text(
