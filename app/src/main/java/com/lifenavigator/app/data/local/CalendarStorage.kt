@@ -4,6 +4,8 @@ import android.content.Context
 import com.lifenavigator.app.data.model.CalendarEvent
 import org.json.JSONArray
 import org.json.JSONObject
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import java.util.UUID
 
 /** Локальное хранилище событий календаря. */
@@ -57,8 +59,14 @@ class CalendarStorage(context: Context) {
                 .put("notes", event.notes ?: JSONObject.NULL)
                 .put("reminderAt", event.reminderAtEpochMillis ?: JSONObject.NULL))
         }
-        prefs.edit().putString(KEY_EVENTS, array.toString()).apply()
+        // commit() гарантирует, что следующее чтение увидит записанный список.
+        check(prefs.edit().putString(KEY_EVENTS, array.toString()).commit()) { "Не удалось записать календарь" }
+        _changes.value = _changes.value + 1L
     }
 
-    companion object { private const val KEY_EVENTS = "events_json" }
+    companion object {
+        private const val KEY_EVENTS = "events_json"
+        private val _changes = MutableStateFlow(0L)
+        val changes: StateFlow<Long> = _changes
+    }
 }
