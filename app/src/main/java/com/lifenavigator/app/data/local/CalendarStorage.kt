@@ -45,7 +45,10 @@ class CalendarStorage(context: Context) {
     fun delete(id: String) = save(load().filterNot { it.id == id })
 
     @Synchronized
-    fun clearAll() = prefs.edit().remove(KEY_EVENTS).apply()
+    fun clearAll() {
+        prefs.edit().remove(KEY_EVENTS).apply()
+        _changes.value = _changes.value + 1L
+    }
 
     @Synchronized
     private fun save(events: List<CalendarEvent>) {
