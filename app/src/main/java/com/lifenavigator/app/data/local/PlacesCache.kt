@@ -41,6 +41,7 @@ class PlacesCache(context: Context) {
             )
         }
         prefs.edit().putString(KEY_PLACES, array.toString()).apply()
+        AppDataChanges.placesChanged()
     }
 
     fun load(): List<PlacePoint> {
@@ -83,6 +84,7 @@ class PlacesCache(context: Context) {
 
     fun clear() {
         prefs.edit().clear().apply()
+        AppDataChanges.placesChanged()
     }
 
     private companion object {

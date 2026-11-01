@@ -72,10 +72,7 @@ object LocalAssistantEngine {
                 .replace(Regex("\\b([01]?\\d|2[0-3]):([0-5]\\d)\\b"), "")
                 .trim().trim(',', ':', '-', ' ')
             if (title.isBlank()) return "Какое событие добавить в календарь?"
-            val start = date.atTime(hour, minute).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
-            val event = calendarStorage.add(title, start)
-            CalendarReminderScheduler.schedule(context, event)
-            return "Добавил в календарь: «${event.title}», ${date} в %02d:%02d. Напомню за 15 минут.".format(hour, minute)
+            return "Я понял, что ты хочешь добавить событие «$title» на ${date} в %02d:%02d. Но пока ничего не изменял. Используй команду добавления события — я сначала попрошу подтверждение.".format(hour, minute)
         }
 
         val taskStorage = TaskStorage(context)
@@ -116,12 +113,10 @@ object LocalAssistantEngine {
                 else -> null
             }
             val priority = if (listOf("срочно", "важно", "обязательно").any(question::contains)) TaskPriority.HIGH else TaskPriority.NORMAL
-            val task = taskStorage.add(title, dueAt = dueAt, reminderAt = dueAt, priority = priority)
-            TaskReminderScheduler.schedule(context, task)
             val dueText = dueAt?.let {
-                " Срок поставил: " + java.text.SimpleDateFormat("dd.MM HH:mm", Locale.getDefault()).format(java.util.Date(it)) + "."
+                " Срок: " + java.text.SimpleDateFormat("dd.MM HH:mm", Locale.getDefault()).format(java.util.Date(it)) + "."
             } ?: ""
-            return "Добавил задачу: «${task.title}».$dueText Открой вкладку «Задачи», чтобы посмотреть и отметить выполнение."
+            return "Я понял, что ты хочешь добавить задачу «$title».$dueText Но пока ничего не менял. Сформулируй команду добавления задачи — сначала я попрошу подтверждение."
         }
         val storage = BudgetStorage(context)
         val today = LocalDate.now()

@@ -90,6 +90,7 @@ class BudgetStorage(context: Context) {
             )
         }
         prefs.edit().putString(KEY_CUSTOM_CATEGORIES, array.toString()).apply()
+        AppDataChanges.budgetChanged()
     }
 
     // --- Траты ---
@@ -132,12 +133,14 @@ class BudgetStorage(context: Context) {
             )
         }
         prefs.edit().putString(KEY_EXPENSES, array.toString()).apply()
+        AppDataChanges.budgetChanged()
     }
 
     // --- Общее ---
 
     fun clearAll() {
         prefs.edit().clear().apply()
+        AppDataChanges.budgetChanged()
     }
 
     private fun readJsonObject(key: String, valueOf: (JSONObject, String) -> Int?): Map<String, Int> {
@@ -156,6 +159,7 @@ class BudgetStorage(context: Context) {
         val json = JSONObject()
         values.forEach { (name, value) -> json.put(name, value) }
         prefs.edit().putString(key, json.toString()).apply()
+        AppDataChanges.budgetChanged()
     }
 
     private companion object {

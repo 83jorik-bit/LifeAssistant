@@ -13,6 +13,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
@@ -43,6 +45,7 @@ import java.util.Locale
 fun TasksScreen(viewModel: TasksViewModel = viewModel()) {
     val state by viewModel.state.collectAsState()
     var showAdd by remember { mutableStateOf(false) }
+    var showCompleted by remember { mutableStateOf(false) }
     var title by remember { mutableStateOf("") }
 
     Scaffold(
@@ -76,11 +79,40 @@ fun TasksScreen(viewModel: TasksViewModel = viewModel()) {
                         items(active, key = { it.id }) { task ->
                             TaskRow(task, onChecked = { viewModel.setCompleted(task, it) }, onDelete = { viewModel.deleteTask(task) })
                         }
+                    } else if (completed.isNotEmpty()) {
+                        item {
+                            Card(Modifier.fillMaxWidth()) {
+                                Text(
+                                    "Все задачи выполнены. Отличная работа!",
+                                    modifier = Modifier.padding(16.dp),
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
                     }
                     if (completed.isNotEmpty()) {
-                        item { Text("Выполнено · ${completed.size}", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp)) }
-                        items(completed, key = { it.id }) { task ->
-                            TaskRow(task, onChecked = { viewModel.setCompleted(task, it) }, onDelete = { viewModel.deleteTask(task) })
+                        item {
+                            Row(
+                                Modifier.fillMaxWidth().padding(top = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "Выполнено · ${completed.size}",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                IconButton(onClick = { showCompleted = !showCompleted }) {
+                                    Icon(
+                                        imageVector = if (showCompleted) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                                        contentDescription = if (showCompleted) "Скрыть выполненные задачи" else "Показать выполненные задачи"
+                                    )
+                                }
+                            }
+                        }
+                        if (showCompleted) {
+                            items(completed, key = { it.id }) { task ->
+                                TaskRow(task, onChecked = { viewModel.setCompleted(task, it) }, onDelete = { viewModel.deleteTask(task) })
+                            }
                         }
                     }
                 }

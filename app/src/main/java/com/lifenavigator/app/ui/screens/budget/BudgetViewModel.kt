@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.lifenavigator.app.data.local.PlacesCache
+import com.lifenavigator.app.data.local.AppDataChanges
 import com.lifenavigator.app.data.model.PlacePoint
 import com.lifenavigator.app.data.money.MatchedPlace
 import com.lifenavigator.app.data.money.MerchantNormalizer
@@ -157,6 +158,12 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
     init {
         reload()
         refreshPlaceSpending()
+        viewModelScope.launch {
+            AppDataChanges.budget.collect {
+                reload()
+                refreshPlaceSpending()
+            }
+        }
     }
 
     private fun reload() {

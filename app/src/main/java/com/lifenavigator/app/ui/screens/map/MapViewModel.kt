@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.lifenavigator.app.data.local.AppSettings
+import com.lifenavigator.app.data.local.AppDataChanges
 import com.lifenavigator.app.data.local.PlacesCache
 import com.lifenavigator.app.data.model.NeedCategory
 import com.lifenavigator.app.data.model.PlacePoint
@@ -75,6 +76,11 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                 searchRadiusMeters = settings.searchRadiusMeters,
                 searchCategories = settings.searchCategories
             )
+        }
+        viewModelScope.launch {
+            AppDataChanges.places.collect {
+                _uiState.update { state -> state.copy(places = placesCache.load()) }
+            }
         }
     }
 
