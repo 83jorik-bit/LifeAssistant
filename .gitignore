@@ -33,3 +33,9 @@ captures/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Node.js dependencies
+/server/node_modules/
+
+# Local server database
+/server/data/
