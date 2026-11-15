@@ -55,28 +55,6 @@ object VoiceCommandDispatcher {
         }
     }
 
-    private fun parseRubles(text: String): Int? {
-        val normalized = text.lowercase(Locale.ROOT)
-        val thousands = Regex("(\\d{1,3}(?:[ \\u00A0]\\d{3})*|\\d+)\\s*(тыс(?:яч(?:а|и)?)?\\.?|тысяч(?:а|и)?)").find(normalized)
-        if (thousands != null) {
-            val base = thousands.groupValues[1].replace(Regex("[ \\u00A0]"), "").toLongOrNull() ?: return null
-            val rest = normalized.substring(thousands.range.last + 1)
-            val extra = Regex("\\b(\\d{1,3})\\b").find(rest)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
-            return (base * 1000L + extra).takeIf { it in 1..Int.MAX_VALUE.toLong() }?.toInt()
-        }
-        val words = Regex("\\b(одна|одну|один|две|два|три|четыре|пять|шесть|семь|восемь|девять|десять)\\s+тысяч(?:а|и)?\\b").find(normalized)
-        if (words != null) {
-            val base = when (words.groupValues[1]) {
-                "одна", "одну", "один" -> 1; "две", "два" -> 2; "три" -> 3; "четыре" -> 4
-                "пять" -> 5; "шесть" -> 6; "семь" -> 7; "восемь" -> 8; "девять" -> 9; else -> 10
-            }
-            val extra = Regex("\\b(\\d{1,3})\\b").find(normalized.substring(words.range.last + 1))?.groupValues?.get(1)?.toIntOrNull() ?: 0
-            return base * 1000 + extra
-        }
-        val number = Regex("(?<!\\d)(\\d{1,3}(?:[ \\u00A0]\\d{3})+|\\d{1,9})(?!\\d)").find(normalized) ?: return null
-        return number.groupValues[1].replace(Regex("[ \\u00A0]"), "").toIntOrNull()
-    }
-
     suspend fun dispatch(context: Context, rawText: String): String? {
         val text = rawText.trim()
         val q = text.lowercase(Locale.ROOT)
@@ -338,7 +316,7 @@ object VoiceCommandDispatcher {
         val expenseCue = listOf("добавь расход", "запиши расход", "учти расход").firstOrNull { q.startsWith(it) }
         val deleteExpenseCue = listOf("удали расход", "удали трату", "убери расход", "убери трату").firstOrNull { q.startsWith(it) }
         if (deleteExpenseCue != null) {
-            val amount = parseRubles(q) ?: return "Назови точную сумму удаляемой траты."
+            val amount = RublesParser.parse(q) ?: return "Назови точную сумму удаляемой траты."
             val storage = com.lifenavigator.app.data.local.BudgetStorage(context)
             val categoryKey = when {
                 "продукт" in q || "магазин" in q || "еда" in q -> NeedCategory.GROCERY.name
@@ -362,7 +340,7 @@ object VoiceCommandDispatcher {
         val incomeCue = listOf("добавь доход", "запиши доход", "учти доход", "установи доход", "измени доход").firstOrNull { q.startsWith(it) }
         val limitCue = listOf("установи лимит", "задай лимит", "измени лимит", "поставь лимит").firstOrNull { q.startsWith(it) }
         if (expenseCue != null || incomeCue != null || limitCue != null) {
-            val amount = parseRubles(q)
+            val amount = RublesParser.parse(q)
                 ?: return "Не распознал сумму. Например: «Добавь расход 2 тысячи рублей на продукты» или «2 500 рублей»."
             if (amount <= 0) return "Сумма должна быть больше нуля."
             val isExpense = expenseCue != null
