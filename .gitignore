@@ -19,6 +19,9 @@ local.properties
 
 # Gradle
 .gradle/
+.gradle
+.kotlinc/
+.kotlin/
 /build/
 /app/build/
 .gradletasknamecache
@@ -39,3 +42,11 @@ Thumbs.db
 
 # Local server database
 /server/data/
+
+# Nested duplicate working copy / accidental embedded repository
+/LifeAssistant/
+
+# Local backups and transient files
+*.bak
+*.tmp
+*.log
