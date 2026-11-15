@@ -18,9 +18,11 @@ if (!(Test-Path (Join-Path $Root ".git"))) {
     throw "Outer Git repository not found at $Root"
 }
 
-$ActualRoot = (git -C $Root rev-parse --show-toplevel).Trim().Replace("/", "\").TrimEnd("\")
+$ActualRootRaw = (git -C $Root rev-parse --show-toplevel).Trim()
 Assert-ExitCode "Resolve outer repository root"
-if ($ActualRoot -ine $Root.TrimEnd("\")) {
+$ActualRoot = [System.IO.Path]::GetFullPath($ActualRootRaw)
+$ExpectedRoot = [System.IO.Path]::GetFullPath($Root)
+if ($ActualRoot -ine $ExpectedRoot) {
     throw "Safety check failed: Git root is '$ActualRoot', expected '$Root'."
 }
 
