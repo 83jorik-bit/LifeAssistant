@@ -84,21 +84,30 @@ foreach ($Path in @($EnginePath, $DispatcherPath, $ContextPath)) {
 }
 
 $Engine = Get-Content $EnginePath -Raw -Encoding UTF8
-if ($Engine -notmatch "Остаток в пределах заданных лимитов" -or
-    $Engine -notmatch "Ориентир" -or
-    $Engine -notmatch "asksDaily") {
+# Decode the Russian verification phrases from Base64. This avoids Windows PowerShell 5.1
+# misreading UTF-8 script literals when the script is stored without a UTF-8 BOM.
+$DailyBudgetPhrase = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String("0J7RgdGC0LDRgtC+0Log0LIg0L/RgNC10LTQtdC70LDRhSDQt9Cw0LTQsNC90L3Ri9GFINC70LjQvNC40YLQvtCy"))
+$DailyGuidePhrase = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String("0J7RgNC40LXQvdGC0LjRgA=="))
+if ($Engine -notmatch "asksDaily" -or
+    $Engine -notmatch "remainingByLimits" -or
+    $Engine -notmatch [regex]::Escape($DailyBudgetPhrase) -or
+    $Engine -notmatch [regex]::Escape($DailyGuidePhrase)) {
     throw "Approved offline daily-budget enhancement was not verified in the outer repository. No deletion was performed."
 }
 
 $Dispatcher = Get-Content $DispatcherPath -Raw -Encoding UTF8
+$ConfirmationPhrase = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String("0L/QvtC00YLQstC10YDQttC00LDRjg=="))
 if ($Dispatcher -notmatch "NeedsConfirmation" -or
-    $Dispatcher -notmatch "подтверждаю") {
+    $Dispatcher -notmatch "voice_action_pending" -or
+    $Dispatcher -notmatch [regex]::Escape($ConfirmationPhrase)) {
     throw "Confirmation-based action flow was not verified. No deletion was performed."
 }
 
 $Context = Get-Content $ContextPath -Raw -Encoding UTF8
-if ($Context -notmatch "Никогда не утверждай" -or
-    $Context -notmatch "успешного действия") {
+$AntiFabricationPhrase = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String("0J3QuNC60L7Qs9C00LAg0L3QtSDRg9GC0LLQtdGA0LbQtNCw0Lk="))
+$SuccessPhrase = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String("0YPRgdC/0LXRiNC90L7Qs9C+INC00LXQudGB0YLQstC40Y8="))
+if ($Context -notmatch [regex]::Escape($AntiFabricationPhrase) -or
+    $Context -notmatch [regex]::Escape($SuccessPhrase)) {
     throw "Assistant anti-fabrication instruction was not verified. No deletion was performed."
 }
 
