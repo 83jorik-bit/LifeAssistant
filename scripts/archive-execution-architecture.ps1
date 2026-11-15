@@ -1,8 +1,7 @@
-# Move the original 0.1 architecture document into the repository as an immutable historical edition.
+# Archive the original execution architecture document without depending on console/script code pages.
 $ErrorActionPreference = "Stop"
 
 $Root = "E:\GitHub\LifeAssistant"
-$Source = Join-Path $Root "Целевая архитектура исполнительной системы LifeAssistant.txt"
 $DestinationDir = Join-Path $Root "docs\archive"
 $Destination = Join-Path $DestinationDir "EXECUTION_ARCHITECTURE_0.1_2026-11-14.md"
 
@@ -18,7 +17,14 @@ $Head = (git -C $Root rev-parse HEAD).Trim()
 $RemoteHead = (git -C $Root rev-parse origin/main).Trim()
 if ($Head -ne $RemoteHead) { throw "Local main is not synchronized with origin/main. Run git pull --ff-only origin main first." }
 
-if (!(Test-Path $Source)) { throw "Original source document not found: $Source" }
+# The original filename contains Cyrillic characters. Locate it by its stable ASCII suffix
+# so Windows PowerShell 5.1 never has to decode a Cyrillic literal from this script.
+$Candidates = @(Get-ChildItem -LiteralPath $Root -File -Filter "*LifeAssistant.txt")
+if ($Candidates.Count -ne 1) {
+    throw "Expected exactly one root-level *LifeAssistant.txt source document; found $($Candidates.Count). No files were moved."
+}
+$Source = $Candidates[0].FullName
+
 if (Test-Path $Destination) { throw "Archive destination already exists: $Destination" }
 
 $Length = (Get-Item -LiteralPath $Source).Length
