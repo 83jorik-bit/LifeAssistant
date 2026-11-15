@@ -30,6 +30,14 @@ if ($Branch -ne "main") {
     throw "Switch the outer repository to main before cleanup. Current branch: $Branch"
 }
 
+$InitialStatus = @(git -C $Root status --porcelain)
+Assert-ExitCode "Check outer repository working tree"
+if ($InitialStatus.Count -gt 0) {
+    Write-Host "Uncommitted changes were found in the outer repository:" -ForegroundColor Yellow
+    $InitialStatus | ForEach-Object { Write-Host $_ }
+    throw "Commit or safely resolve outer-repository changes before cleanup. No deletion was performed."
+}
+
 if (!(Test-Path $Nested)) {
     Write-Host "Nested directory is already absent. Nothing to remove." -ForegroundColor Green
     exit 0
