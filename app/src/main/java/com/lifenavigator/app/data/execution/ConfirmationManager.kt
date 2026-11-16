@@ -4,7 +4,8 @@ data class PendingOperation(
     val request: ActionRequest,
     val status: OperationStatus,
     val confirmationPrompt: String,
-    val updatedAtEpochMillis: Long
+    val updatedAtEpochMillis: Long,
+    val legacySource: String? = null
 ) {
     init {
         require(confirmationPrompt.isNotBlank()) {
@@ -80,6 +81,16 @@ class ConfirmationManager(
             throw IllegalStateException("Unable to read active operation", it)
         }
         if (active != null) {
+            if (active.legacySource != null) {
+                if (!store.clearLegacy(active.legacySource)) {
+                    throw IllegalStateException("Unable to finish legacy pending cleanup")
+                }
+                val normalized = active.copy(legacySource = null)
+                if (!store.writeActive(normalized)) {
+                    throw IllegalStateException("Unable to persist legacy migration completion")
+                }
+                return normalized
+            }
             if (isTerminal(active.status)) {
                 if (!store.writeLast(active) || !store.clearActive()) {
                     throw IllegalStateException("Unable to finalize stored operation")
@@ -103,13 +114,18 @@ class ConfirmationManager(
                         "Legacy pending operation failed contract validation; it was preserved"
                     )
                 }
-                if (!store.writeActive(legacy.operation)) {
+                val migrated = legacy.operation.copy(legacySource = legacy.source)
+                if (!store.writeActive(migrated)) {
                     throw IllegalStateException("Unable to migrate legacy pending operation")
                 }
                 if (!store.clearLegacy(legacy.source)) {
                     throw IllegalStateException("Migrated operation is saved, but legacy cleanup failed")
                 }
-                legacy.operation
+                val normalized = migrated.copy(legacySource = null)
+                if (!store.writeActive(normalized)) {
+                    throw IllegalStateException("Unable to persist legacy migration completion")
+                }
+                normalized
             }
         }
     }
