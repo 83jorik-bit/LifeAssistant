@@ -15,14 +15,28 @@ class SharedPreferencesOperationStateStore(context: Context) : OperationStateSto
     private val state: SharedPreferences =
         appContext.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
 
-    override fun readActive(): PendingOperation? =
+    override fun readActive(): PendingOperation? = synchronized(ACTIVE_OPERATION_LOCK) {
         state.getString(KEY_ACTIVE, null)?.let(::decode)
+    }
+
+    override fun createActiveIfAbsent(operation: PendingOperation): Boolean =
+        synchronized(ACTIVE_OPERATION_LOCK) {
+            if (state.contains(KEY_ACTIVE)) {
+                false
+            } else {
+                state.edit().putString(KEY_ACTIVE, encode(operation)).commit()
+            }
+        }
 
     override fun writeActive(operation: PendingOperation): Boolean =
-        state.edit().putString(KEY_ACTIVE, encode(operation)).commit()
+        synchronized(ACTIVE_OPERATION_LOCK) {
+            state.edit().putString(KEY_ACTIVE, encode(operation)).commit()
+        }
 
     override fun clearActive(): Boolean =
-        state.edit().remove(KEY_ACTIVE).commit()
+        synchronized(ACTIVE_OPERATION_LOCK) {
+            state.edit().remove(KEY_ACTIVE).commit()
+        }
 
     override fun readLast(): PendingOperation? =
         state.getString(KEY_LAST, null)?.let(::decode)
@@ -205,8 +219,9 @@ class SharedPreferencesOperationStateStore(context: Context) : OperationStateSto
             confirmationPrompt = json.getString("confirmationPrompt"),
             updatedAtEpochMillis = json.getLong("updatedAtEpochMillis"),
             legacySource = json.optString("legacySource").takeIf { it.isNotBlank() },
-            expiresAtEpochMillis = if (json.isNull("expiresAtEpochMillis")) null
-                else json.optLong("expiresAtEpochMillis").takeIf { it > 0L }
+            expiresAtEpochMillis = if (!json.has("expiresAtEpochMillis") ||
+                json.isNull("expiresAtEpochMillis")) null
+                else json.getLong("expiresAtEpochMillis")
         )
     }
 
@@ -214,6 +229,7 @@ class SharedPreferencesOperationStateStore(context: Context) : OperationStateSto
         private const val PREFERENCES_NAME = "assistant_execution_state_v1"
         private const val KEY_ACTIVE = "active_operation"
         private const val KEY_LAST = "last_operation"
+        private val ACTIVE_OPERATION_LOCK = Any()
 
         private const val LEGACY_ACTION_PREFERENCES = "voice_action_pending"
         private const val LEGACY_BUDGET_PREFERENCES = "voice_budget_pending"
