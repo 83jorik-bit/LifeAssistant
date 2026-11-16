@@ -14,6 +14,7 @@ class ActionRegistryTest {
         assertTrue(registry.find(ActionId("budget.expense.create")) != null)
         assertTrue(registry.find(ActionId("budget.expense.delete")) != null)
         assertTrue(registry.find(ActionId("task.create")) != null)
+        assertTrue(registry.find(ActionId("task.complete")) != null)
         assertTrue(registry.find(ActionId("calendar.event.create")) != null)
         assertTrue(registry.find(ActionId("places.saved.list")) != null)
     }
