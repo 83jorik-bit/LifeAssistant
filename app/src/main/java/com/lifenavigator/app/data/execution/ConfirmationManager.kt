@@ -5,7 +5,9 @@ data class PendingOperation(
     val status: OperationStatus,
     val confirmationPrompt: String,
     val updatedAtEpochMillis: Long,
-    val legacySource: String? = null
+    val legacySource: String? = null,
+    /** Null means that no expiry duration has been configured for this action yet. */
+    val expiresAtEpochMillis: Long? = null
 ) {
     init {
         require(confirmationPrompt.isNotBlank()) {
@@ -13,6 +15,9 @@ data class PendingOperation(
         }
         require(updatedAtEpochMillis >= 0L) {
             "updatedAtEpochMillis must not be negative"
+        }
+        require(expiresAtEpochMillis == null || expiresAtEpochMillis >= request.createdAtEpochMillis) {
+            "expiresAtEpochMillis must not precede operation creation"
         }
     }
 }
@@ -81,6 +86,24 @@ class ConfirmationManager(
             throw IllegalStateException("Unable to read active operation", it)
         }
         if (active != null) {
+            if (
+                active.expiresAtEpochMillis != null &&
+                nowMillis() >= active.expiresAtEpochMillis &&
+                (active.status == OperationStatus.AWAITING_CONFIRMATION ||
+                    active.status == OperationStatus.CONFIRMED)
+            ) {
+                val expired = active.copy(
+                    status = OperationStatus.EXPIRED,
+                    updatedAtEpochMillis = nowMillis()
+                )
+                if (!store.writeLast(expired)) {
+                    throw IllegalStateException("Unable to persist expired operation")
+                }
+                if (!store.clearActive()) {
+                    throw IllegalStateException("Expired operation saved, but active state could not be cleared")
+                }
+                return null
+            }
             if (active.legacySource != null) {
                 if (!store.clearLegacy(active.legacySource)) {
                     throw IllegalStateException("Unable to finish legacy pending cleanup")
@@ -210,6 +233,10 @@ class ConfirmationManager(
         finish(sessionId, operationId, OperationStatus.FAILED)
 
     @Synchronized
+    fun reject(sessionId: SessionId, operationId: OperationId): OperationManagerResult =
+        finish(sessionId, operationId, OperationStatus.REJECTED)
+
+    @Synchronized
     fun cancel(sessionId: SessionId, operationId: OperationId): OperationManagerResult {
         val operation = findActiveOperation() ?: return OperationManagerResult.NoActiveOperation
         identityError(operation, sessionId, operationId)?.let { return it }
@@ -325,14 +352,21 @@ class ConfirmationManager(
     }
 
     private fun recoverInterruptedExecution() {
-        val active = runCatching { store.readActive() }.getOrNull() ?: return
+        val active = try {
+            store.readActive()
+        } catch (error: Exception) {
+            throw IllegalStateException("Unable to inspect operation state during recovery", error)
+        } ?: return
         if (active.status == OperationStatus.EXECUTING) {
-            store.writeActive(
-                active.copy(
-                    status = OperationStatus.RESULT_UNKNOWN,
-                    updatedAtEpochMillis = nowMillis()
-                )
+            val recovered = active.copy(
+                status = OperationStatus.RESULT_UNKNOWN,
+                updatedAtEpochMillis = nowMillis()
             )
+            if (!store.writeActive(recovered)) {
+                throw IllegalStateException(
+                    "Unable to persist RESULT_UNKNOWN during interrupted execution recovery"
+                )
+            }
         }
     }
 
