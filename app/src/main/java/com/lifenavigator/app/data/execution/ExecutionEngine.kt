@@ -173,10 +173,9 @@ class ExecutionEngine(
         val definition = when (val validation = registry.validate(request)) {
             is ActionValidationResult.Valid -> validation.definition
             is ActionValidationResult.Invalid -> {
-                confirmationManager.reject(sessionId, operationId)
-                return result(
+                return rejectBeforeExecution(
+                    sessionId,
                     operationId,
-                    OperationStatus.REJECTED,
                     "Параметры операции больше не проходят проверку: ${validation.errors.joinToString("; ")}",
                     "INVALID_OPERATION"
                 )
@@ -186,10 +185,9 @@ class ExecutionEngine(
         if (definition.kind != ActionKind.MUTATION ||
             definition.confirmationPolicy != ConfirmationPolicy.REQUIRED
         ) {
-            confirmationManager.reject(sessionId, operationId)
-            return result(
+            return rejectBeforeExecution(
+                sessionId,
                 operationId,
-                OperationStatus.REJECTED,
                 "Confirmation Manager может передавать на исполнение только подтверждённые операции изменения данных.",
                 "UNEXPECTED_ACTION_POLICY"
             )
@@ -214,10 +212,9 @@ class ExecutionEngine(
                     authorization.code
                 )
             is ExecutionAuthorizationResult.Denied -> {
-                confirmationManager.reject(sessionId, operationId)
-                return result(
+                return rejectBeforeExecution(
+                    sessionId,
                     operationId,
-                    OperationStatus.REJECTED,
                     authorization.message,
                     authorization.code
                 )
@@ -288,6 +285,25 @@ class ExecutionEngine(
         return executorResult.copy(
             completedAtEpochMillis = executorResult.completedAtEpochMillis ?: nowMillis()
         )
+    }
+
+    private fun rejectBeforeExecution(
+        sessionId: SessionId,
+        operationId: OperationId,
+        message: String,
+        errorCode: String
+    ): ActionExecutionResult {
+        return when (confirmationManager.reject(sessionId, operationId)) {
+            is OperationManagerResult.Success ->
+                result(operationId, OperationStatus.REJECTED, message, errorCode)
+            else ->
+                result(
+                    operationId,
+                    OperationStatus.CONFIRMED,
+                    "Отказ не удалось надёжно зафиксировать. Исполнитель не вызывался; операция остаётся заблокированной.",
+                    "REJECTION_PERSISTENCE_FAILED"
+                )
+        }
     }
 
     private fun result(
