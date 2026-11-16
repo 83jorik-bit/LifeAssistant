@@ -37,14 +37,43 @@ class ActionRegistryTest {
 
         assertTrue(result is ActionValidationResult.Valid)
         val validResult = result as ActionValidationResult.Valid
-        assertEquals(
-            ConfirmationPolicy.REQUIRED,
-            validResult.definition.confirmationPolicy
+        assertEquals(ConfirmationPolicy.REQUIRED, validResult.definition.confirmationPolicy)
+        assertEquals(SecurityCategory.B, validResult.definition.securityCategory)
+    }
+
+
+    @Test
+    fun everyRegisteredActionHasAnExplicitSecurityClassification() {
+        assertEquals(12, registry.all().size)
+        assertTrue(registry.all().none { it.securityCategory == SecurityCategory.UNCLASSIFIED })
+
+        val expected = mapOf(
+            "budget.expense.create" to SecurityCategory.B,
+            "budget.expense.delete" to SecurityCategory.A,
+            "budget.income.set" to SecurityCategory.B,
+            "budget.limit.set" to SecurityCategory.B,
+            "task.create" to SecurityCategory.STANDARD,
+            "task.complete" to SecurityCategory.STANDARD,
+            "calendar.event.create" to SecurityCategory.STANDARD,
+            "budget.summary.read" to SecurityCategory.STANDARD,
+            "budget.limits.read" to SecurityCategory.STANDARD,
+            "tasks.list.read" to SecurityCategory.STANDARD,
+            "calendar.events.list" to SecurityCategory.STANDARD,
+            "places.saved.list" to SecurityCategory.STANDARD
         )
-        assertEquals(
-            SecurityCategory.UNCLASSIFIED,
-            validResult.definition.securityCategory
-        )
+        assertEquals(expected, registry.all().associate { it.id.value to it.securityCategory })
+    }
+
+    @Test
+    fun confirmationPolicyMatchesTheApprovedRiskCategories() {
+        registry.all().forEach { definition ->
+            val expected = when (definition.securityCategory) {
+                SecurityCategory.STANDARD -> ConfirmationPolicy.NOT_REQUIRED
+                SecurityCategory.A, SecurityCategory.B -> ConfirmationPolicy.REQUIRED
+                SecurityCategory.UNCLASSIFIED -> error("Catalog action must be classified")
+            }
+            assertEquals(definition.id.value, expected, definition.confirmationPolicy)
+        }
     }
 
     @Test
