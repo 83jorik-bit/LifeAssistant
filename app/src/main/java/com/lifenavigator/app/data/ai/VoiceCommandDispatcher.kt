@@ -18,6 +18,7 @@ import java.util.Locale
 import com.lifenavigator.app.data.execution.ActionId
 import com.lifenavigator.app.data.execution.ActionParameterValue
 import com.lifenavigator.app.data.execution.ConfirmationManager
+import com.lifenavigator.app.data.execution.ConfirmationManagerProvider
 import com.lifenavigator.app.data.execution.OperationManagerResult
 import com.lifenavigator.app.data.execution.OperationStatus
 import com.lifenavigator.app.data.execution.PendingOperation
@@ -40,7 +41,7 @@ object VoiceCommandDispatcher {
     )
 
     private fun confirmationManager(context: Context) =
-        ConfirmationManager(SharedPreferencesOperationStateStore(context))
+        ConfirmationManagerProvider.get(context)
 
     suspend fun dispatchResult(context: Context, rawText: String): AssistantActionResult {
         return try {
