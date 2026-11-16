@@ -39,6 +39,8 @@ sealed interface LegacyPendingImport {
  */
 interface OperationStateStore {
     fun readActive(): PendingOperation?
+    /** Atomically creates the active slot only when it is empty. */
+    fun createActiveIfAbsent(operation: PendingOperation): Boolean
     fun writeActive(operation: PendingOperation): Boolean
     fun clearActive(): Boolean
     fun readLast(): PendingOperation?
@@ -209,8 +211,18 @@ class ConfirmationManager(
             confirmationPrompt = confirmationPrompt,
             updatedAtEpochMillis = now
         )
-        return if (store.writeActive(operation)) {
-            OperationManagerResult.Success(operation)
+        if (store.createActiveIfAbsent(operation)) {
+            return OperationManagerResult.Success(operation)
+        }
+        val competing = try {
+            activeOperation()
+        } catch (error: Exception) {
+            return OperationManagerResult.StorageFailure(
+                error.message ?: "Unable to inspect competing operation"
+            )
+        }
+        return if (competing != null) {
+            OperationManagerResult.Busy(competing)
         } else {
             OperationManagerResult.StorageFailure("Unable to persist pending operation")
         }
