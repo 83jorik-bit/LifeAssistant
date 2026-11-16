@@ -207,8 +207,33 @@ class ExecutionEngineTest {
         val store = InMemoryOperationStateStore()
         val manager = ConfirmationManager(store)
         val pending = prepareExpense(manager)
-        val request = pending.request
+        val actionId = ActionId("budget.expense.import")
+        val request = pending.request.copy(actionId = actionId)
+        val registry = ActionRegistry(
+            listOf(
+                ActionDefinition(
+                    id = actionId,
+                    domain = ActionDomain.BUDGET,
+                    kind = ActionKind.MUTATION,
+                    parameters = listOf(
+                        ActionParameterDefinition(
+                            name = "amountRub",
+                            type = ActionParameterType.INTEGER,
+                            minimumInteger = 1
+                        ),
+                        ActionParameterDefinition(
+                            name = "categoryKey",
+                            type = ActionParameterType.TEXT
+                        )
+                    ),
+                    confirmationPolicy = ConfirmationPolicy.REQUIRED,
+                    securityCategory = SecurityCategory.UNCLASSIFIED,
+                    executorKey = "budget"
+                )
+            )
+        )
         val sam = SecurityAuthorizationManager(
+            registry = registry,
             eventSink = SecurityEventSink { true }
         )
         val authorizer = SamOperationAuthorizer(
@@ -222,7 +247,7 @@ class ExecutionEngineTest {
                 )
             }
         )
-        val definition = LifeAssistantActionRegistry.instance.find(request.actionId)!!
+        val definition = registry.find(actionId)!!
 
         val result = authorizer.authorize(request, definition)
 
