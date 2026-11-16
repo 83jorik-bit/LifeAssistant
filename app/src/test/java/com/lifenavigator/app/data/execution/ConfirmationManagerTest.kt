@@ -1,7 +1,7 @@
 package com.lifenavigator.app.data.execution
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -24,7 +24,7 @@ class ConfirmationManagerTest {
             confirmationPrompt = "Сохранить расход?"
         )
         assertTrue(invalid is OperationManagerResult.Invalid)
-        assertEquals(null, store.active)
+        assertNull(store.active)
 
         val valid = manager.prepare(
             sessionId = session,
@@ -37,7 +37,7 @@ class ConfirmationManagerTest {
         )
         assertTrue(valid is OperationManagerResult.Success)
         assertEquals(OperationStatus.AWAITING_CONFIRMATION, store.active?.status)
-        assertEquals(100L, store.active?.request?.createdAtEpochMillis)
+        assertEquals(100L, store.active!!.request.createdAtEpochMillis)
     }
 
     @Test
@@ -101,7 +101,7 @@ class ConfirmationManagerTest {
         assertTrue(completed is OperationManagerResult.Success)
         assertEquals(OperationStatus.COMPLETED, store.last?.status)
         assertEquals(null, store.active)
-        assertEquals(null, manager.activeOperation())
+        assertNull(manager.activeOperation())
     }
 
     @Test
@@ -143,7 +143,7 @@ class ConfirmationManagerTest {
         )
         assertTrue(resolved is OperationManagerResult.Success)
         assertEquals(OperationStatus.COMPLETED, store.last?.status)
-        assertFalse(store.active != null)
+        assertNull(store.active)
     }
 
     @Test
