@@ -16,6 +16,14 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import com.lifenavigator.app.data.execution.ActionId
+import com.lifenavigator.app.data.execution.ActionParameterValue
+import com.lifenavigator.app.data.execution.ConfirmationManager
+import com.lifenavigator.app.data.execution.OperationManagerResult
+import com.lifenavigator.app.data.execution.OperationStatus
+import com.lifenavigator.app.data.execution.PendingOperation
+import com.lifenavigator.app.data.execution.SessionId
+import com.lifenavigator.app.data.execution.SharedPreferencesOperationStateStore
 
 /**
  * Единственная точка маршрутизации голосовых/текстовых команд к функциям приложения.
@@ -23,18 +31,29 @@ import java.util.Locale
  * Ответы об изменениях формируются здесь только после успешной записи в хранилище.
  */
 object VoiceCommandDispatcher {
-    /**
-     * Typed entry point used by the assistant UI. Legacy command parsing stays
-     * in dispatch() for now; this adapter makes the execution state explicit.
-     */
+
+    private const val SESSION_ID = SharedPreferencesOperationStateStore.DEFAULT_SESSION_ID
+
+    private data class DomainExecutionOutcome(
+        val success: Boolean,
+        val message: String,
+        val entityId: String? = null
+    )
+
+    private fun confirmationManager(context: Context) =
+        ConfirmationManager(SharedPreferencesOperationStateStore(context))
+
     suspend fun dispatchResult(context: Context, rawText: String): AssistantActionResult {
         return try {
-            val message = dispatch(context, rawText)
+            val manager = confirmationManager(context)
+            val message = dispatchInternal(context, rawText, manager)
                 ?: return AssistantActionResult.NotHandled
-            val pending = context.getSharedPreferences("voice_action_pending", Context.MODE_PRIVATE)
-                .getString("pending", null)
+            val active = manager.activeOperation()
             when {
-                pending != null -> AssistantActionResult.NeedsConfirmation(message)
+                active?.status == OperationStatus.RESULT_UNKNOWN ->
+                    AssistantActionResult.Failed(message)
+                active != null && isConfirmationPrompt(message) ->
+                    AssistantActionResult.NeedsConfirmation(message, active.request.operationId.value)
                 listOf(
                     "что именно", "какое событие", "назови задачу", "назови категорию",
                     "уточни", "неоднознач", "не нашёл задачу", "не нашел задачу",
@@ -43,7 +62,7 @@ object VoiceCommandDispatcher {
                     AssistantActionResult.NeedsClarification(message)
                 listOf(
                     "не удалось", "ошибка", "ничего не добавлено", "ничего не изменено",
-                    "не сохранено", "не выполнено"
+                    "не сохранено", "не выполнено", "не повторяю"
                 ).any { message.contains(it, ignoreCase = true) } ->
                     AssistantActionResult.Failed(message)
                 else -> AssistantActionResult.Completed(message)
@@ -55,7 +74,14 @@ object VoiceCommandDispatcher {
         }
     }
 
-    suspend fun dispatch(context: Context, rawText: String): String? {
+    suspend fun dispatch(context: Context, rawText: String): String? =
+        dispatchInternal(context, rawText, confirmationManager(context))
+
+    private fun dispatchInternal(
+        context: Context,
+        rawText: String,
+        manager: ConfirmationManager
+    ): String? {
         val text = rawText.trim()
         val q = text.lowercase(Locale.ROOT)
         val taskStorage = TaskStorage(context)
@@ -63,45 +89,40 @@ object VoiceCommandDispatcher {
         val zone = ZoneId.systemDefault()
         val today = LocalDate.now(zone)
 
-        // Отложенные голосовые действия календаря и задач выполняются только после подтверждения.
-        val actionPrefs = context.getSharedPreferences("voice_action_pending", Context.MODE_PRIVATE)
-        val actionRaw = actionPrefs.getString("pending", null)
-        val actionYes = q in setOf("да", "да, выполнить", "выполни", "подтверждаю", "подтверждаю действие", "сохрани")
-        val actionNo = q in setOf("нет", "отмена", "отмени", "не надо", "не выполняй", "отменить")
-        if (actionRaw != null && actionYes) {
-            val pending = runCatching { JSONObject(actionRaw) }.getOrNull()
-                ?: run { actionPrefs.edit().remove("pending").apply(); return "Не удалось прочитать подготовленное действие. Ничего не изменено." }
-            when (pending.optString("type")) {
-                "calendar_event" -> {
-                    val title = pending.optString("title")
-                    val startsAt = pending.optLong("startsAt", 0L)
-                    if (title.isBlank() || startsAt <= 0L) return "Не хватает данных события. Ничего не добавлено."
-                    val event = calendarStorage.add(title, startsAt)
-                    CalendarReminderScheduler.schedule(context, event)
-                    val saved = calendarStorage.load().any { it.id == event.id }
-                    actionPrefs.edit().remove("pending").apply()
-                    return if (saved) "Подтверждено. Событие «${event.title}» действительно сохранено в календаре." else "Не удалось подтвердить сохранение события. Проверь календарь."
-                }
-                "task" -> {
-                    val title = pending.optString("title")
-                    if (title.isBlank()) return "Не указано название задачи. Ничего не добавлено."
-                    val dueAt = pending.optLong("dueAt", 0L).takeIf { it > 0L }
-                    val priority = if (pending.optString("priority") == "HIGH") TaskPriority.HIGH else TaskPriority.NORMAL
-                    val task = taskStorage.add(title, dueAt = dueAt, reminderAt = dueAt, priority = priority)
-                    if (dueAt != null) TaskReminderScheduler.schedule(context, task)
-                    val saved = taskStorage.load().any { it.id == task.id }
-                    actionPrefs.edit().remove("pending").apply()
-                    return if (saved) "Подтверждено. Задача «${task.title}» действительно добавлена." else "Не удалось подтвердить сохранение задачи. Проверь список задач."
+        val activeOperation = try {
+            manager.activeOperation()
+        } catch (error: Exception) {
+            return "Не удалось безопасно восстановить ожидающее действие. Ничего не изменено. Обрати внимание: ${error.message ?: "ошибка состояния"}."
+        }
+
+        if (activeOperation != null) {
+            val yes = q in setOf(
+                "да", "да, выполнить", "да сохранить", "выполни", "подтверждаю",
+                "подтверждаю действие", "сохрани", "сохранить"
+            )
+            val no = q in setOf(
+                "нет", "отмена", "отмени", "не надо", "не выполняй",
+                "отменить", "не сохраняй"
+            )
+
+            if (activeOperation.status == OperationStatus.RESULT_UNKNOWN) {
+                return "Предыдущее действие было прервано во время выполнения. Я не буду повторять его автоматически: сначала необходимо установить, сохранились ли данные."
+            }
+            if (activeOperation.status == OperationStatus.EXECUTING) {
+                return "Действие уже передано на выполнение. Повторный запуск заблокирован."
+            }
+            if (no) {
+                return when (manager.cancel(
+                    activeOperation.request.sessionId,
+                    activeOperation.request.operationId
+                )) {
+                    is OperationManagerResult.Success -> "Операция отменена. Изменения не вносились."
+                    else -> "Не удалось зафиксировать отмену операции. Ничего нового не выполнялось."
                 }
             }
-            actionPrefs.edit().remove("pending").apply()
-            return "Подготовленное действие больше не поддерживается. Ничего не изменено."
+            if (yes) return executeConfirmedOperation(context, manager, activeOperation)
+            return "Есть одно подготовленное действие: ${activeOperation.confirmationPrompt} Скажи «подтверждаю» или «отмена»."
         }
-        if (actionRaw != null && actionNo) {
-            actionPrefs.edit().remove("pending").apply()
-            return "Отменено. Никакие изменения не внесены."
-        }
-        if (actionRaw != null) return "Я пока ничего не менял. Подготовлено действие. Скажи «подтверждаю» или «отмена»."
 
         val listTasks = listOf("мои задачи", "список задач", "покажи задачи", "какие задачи", "что по задачам", "что мне нужно сделать", "что осталось сделать", "план на день", "план на сегодня", "есть ли просроченные").any(q::contains)
         if (listTasks) {
@@ -135,10 +156,20 @@ object VoiceCommandDispatcher {
                 ?.atZone(zone)?.toInstant()?.toEpochMilli()
             val priority = if (listOf("срочно", "важно", "обязательно").any(q::contains)) TaskPriority.HIGH else TaskPriority.NORMAL
             val due = dueAt?.let { " Срок: ${Instant.ofEpochMilli(it).atZone(zone).format(DateTimeFormatter.ofPattern("dd.MM в HH:mm"))}." }.orEmpty()
-            actionPrefs.edit().putString("pending", JSONObject()
-                .put("type", "task").put("title", title).put("dueAt", dueAt ?: 0L)
-                .put("priority", priority.name).toString()).apply()
-            return "Я понял задачу: «$title».$due Пока не добавляю её. Скажи «подтверждаю», чтобы сохранить, или «отмена»."
+            val parameters = linkedMapOf<String, ActionParameterValue>(
+                "title" to ActionParameterValue.Text(title),
+                "priority" to ActionParameterValue.Text(priority.name)
+            )
+            dueAt?.let {
+                parameters["dueAtEpochMillis"] = ActionParameterValue.Integer(it)
+                parameters["reminderAtEpochMillis"] = ActionParameterValue.Integer(it)
+            }
+            return prepareOperation(
+                manager,
+                ActionId("task.create"),
+                parameters,
+                "Я понял задачу: «$title».$due Пока не добавляю её. Скажи «подтверждаю», чтобы сохранить, или «отмена»."
+            )
         }
 
         val completeCue = listOf("отметь выполненной задачу", "отметь выполненной", "заверши задачу", "выполни задачу", "закрой задачу").firstOrNull { q.startsWith(it) }
@@ -190,9 +221,15 @@ object VoiceCommandDispatcher {
                 .replace(time.value, "").trim().trim(',', ':', '-', ' ')
             if (title.isBlank()) return "Как назвать событие?"
             val start = date.atTime(hour, minute).atZone(zone).toInstant().toEpochMilli()
-            actionPrefs.edit().putString("pending", JSONObject()
-                .put("type", "calendar_event").put("title", title).put("startsAt", start).toString()).apply()
-            return "Подготовил событие «$title» на ${date} в %02d:%02d. Пока не добавляю его. Скажи «подтверждаю», чтобы внести в календарь, или «отмена».".format(hour, minute)
+            return prepareOperation(
+                manager,
+                ActionId("calendar.event.create"),
+                mapOf(
+                    "title" to ActionParameterValue.Text(title),
+                    "startsAtEpochMillis" to ActionParameterValue.Integer(start)
+                ),
+                "Подготовил событие «$title» на ${date} в %02d:%02d. Пока не добавляю его. Скажи «подтверждаю», чтобы внести в календарь, или «отмена».".format(hour, minute)
+            )
         }
 
         // Голосовое управление картой использует последнюю явно определённую точку.
@@ -257,62 +294,6 @@ object VoiceCommandDispatcher {
             } + "\nСкажи «построй маршрут до [название]» или «открой [название] на карте»."
         }
 
-        // Pending budget mutations are persisted separately and require an explicit confirmation.
-        val budgetPrefs = context.getSharedPreferences("voice_budget_pending", Context.MODE_PRIVATE)
-        val pendingRaw = budgetPrefs.getString("pending", null)
-        val confirmation = q in setOf("да", "да сохранить", "подтверждаю", "сохрани", "сохранить")
-        val cancellation = q in setOf("нет", "отмена", "отмени", "не сохраняй", "отменить")
-        fun categoryTitle(key: String): String =
-            NeedCategory.entries.firstOrNull { it.name == key }?.displayName
-                ?: com.lifenavigator.app.data.local.BudgetStorage(context).loadCustomCategories().firstOrNull { it.key == key }?.title
-                ?: key
-        if (pendingRaw != null && confirmation) {
-            val pending = runCatching { JSONObject(pendingRaw) }.getOrNull()
-                ?: run { budgetPrefs.edit().remove("pending").apply(); return "Не удалось прочитать операцию. Ничего не сохранено." }
-            val storage = com.lifenavigator.app.data.local.BudgetStorage(context)
-            val amount = pending.optInt("amount", 0)
-            if (pending.optString("type") == "expense_delete") {
-                val expenseId = pending.optString("expenseId")
-                val expenses = storage.loadExpenses()
-                if (expenses.none { it.id == expenseId }) {
-                    budgetPrefs.edit().remove("pending").apply()
-                    return "Эта трата уже отсутствует. Ничего не изменено."
-                }
-                storage.saveExpenses(expenses.filterNot { it.id == expenseId })
-                budgetPrefs.edit().remove("pending").apply()
-                return "Трата удалена из бюджета."
-            }
-            if (amount <= 0) return "Некорректная сумма. Ничего не сохранено."
-            when (pending.optString("type")) {
-                "expense" -> {
-                    val category = pending.optString("category")
-                    if (category.isBlank()) return "Не указана категория. Ничего не сохранено."
-                    val entries = storage.loadExpenses().toMutableList()
-                    entries.add(Expense(UUID.randomUUID().toString(), category, amount, null, LocalDate.now(zone).toEpochDay()))
-                    storage.saveExpenses(entries)
-                    budgetPrefs.edit().remove("pending").apply()
-                    return "Расход $amount ₽ сохранён: ${categoryTitle(category)}."
-                }
-                "income" -> {
-                    storage.saveIncome(YearMonth.now(), amount)
-                    budgetPrefs.edit().remove("pending").apply()
-                    return "Доход $amount ₽ сохранён для текущего месяца."
-                }
-                "limit" -> {
-                    val category = pending.optString("category")
-                    if (category.isBlank()) return "Не указана категория лимита. Ничего не изменено."
-                    storage.saveLimit(category, amount)
-                    budgetPrefs.edit().remove("pending").apply()
-                    return "Лимит «${categoryTitle(category)}» установлен: $amount ₽."
-                }
-            }
-            return "Неизвестный тип операции. Ничего не сохранено."
-        }
-        if (pendingRaw != null && cancellation) {
-            budgetPrefs.edit().remove("pending").apply()
-            return "Операция отменена. Бюджет не изменён."
-        }
-        if (pendingRaw != null) return "Ожидаю подтверждение: скажи «да» или «отмена»."
         val expenseCue = listOf("добавь расход", "запиши расход", "учти расход").firstOrNull { q.startsWith(it) }
         val deleteExpenseCue = listOf("удали расход", "удали трату", "убери расход", "убери трату").firstOrNull { q.startsWith(it) }
         if (deleteExpenseCue != null) {
@@ -333,9 +314,12 @@ object VoiceCommandDispatcher {
             if (candidates.isEmpty()) return "Не нашёл такую трату за текущий месяц. Ничего не удалено."
             if (candidates.size > 1) return "Нашёл несколько трат по ${amount} ₽ в категории «${categoryTitle(categoryKey)}». Уточни дату в формате ДД.ММ."
             val expense = candidates.single()
-            budgetPrefs.edit().putString("pending", JSONObject()
-                .put("type", "expense_delete").put("expenseId", expense.id).toString()).apply()
-            return "Удалить трату ${amount} ₽ из категории «${categoryTitle(categoryKey)}»? Скажи «да» или «отмена»."
+            return prepareOperation(
+                manager,
+                ActionId("budget.expense.delete"),
+                mapOf("expenseId" to ActionParameterValue.Text(expense.id)),
+                "Удалить трату ${amount} ₽ из категории «${categoryTitle(context, categoryKey)}»? Скажи «да» или «отмена»."
+            )
         }
         val incomeCue = listOf("добавь доход", "запиши доход", "учти доход", "установи доход", "измени доход").firstOrNull { q.startsWith(it) }
         val limitCue = listOf("установи лимит", "задай лимит", "измени лимит", "поставь лимит").firstOrNull { q.startsWith(it) }
@@ -358,22 +342,30 @@ object VoiceCommandDispatcher {
                 else -> storage.loadCustomCategories().firstOrNull { q.contains(it.title.lowercase(Locale.ROOT)) }?.key
             }
             if ((isExpense || isLimit) && category == null) return "Уточни категорию: продукты, кафе, аптека, одежда, транспорт, красота, образование или медицина. Ничего не изменено."
-            val type = when { isExpense -> "expense"; isLimit -> "limit"; else -> "income" }
-            val pending = JSONObject().put("type", type).put("amount", amount).put("category", category ?: "")
-            if (type == "income") pending.put("previousAmount", storage.loadIncome()[YearMonth.now().toString()] ?: 0)
-            if (type == "limit") pending.put("previousAmount", storage.loadLimits()[category] ?: 0)
-            budgetPrefs.edit().putString("pending", pending.toString()).apply()
-            return when (type) {
-                "expense" -> "Распознал расход: $amount ₽, категория «${categoryTitle(category!!)}». Сохранить? Скажи «да» или «отмена»."
-                "limit" -> {
-                    val previous = pending.optInt("previousAmount", 0)
-                    "Установить лимит «${categoryTitle(category!!)}» $amount ₽${if (previous > 0) " вместо текущего $previous ₽" else ""}? Скажи «да» или «отмена»."
+            val actionId = when {
+                isExpense -> ActionId("budget.expense.create")
+                isLimit -> ActionId("budget.limit.set")
+                else -> ActionId("budget.income.set")
+            }
+            val parameters = linkedMapOf<String, ActionParameterValue>(
+                "amountRub" to ActionParameterValue.Integer(amount.toLong())
+            )
+            if (category != null && (isExpense || isLimit)) {
+                parameters["categoryKey"] = ActionParameterValue.Text(category)
+            }
+            val prompt = when {
+                isExpense ->
+                    "Распознал расход: $amount ₽, категория «${categoryTitle(context, category!!)}». Сохранить? Скажи «да» или «отмена»."
+                isLimit -> {
+                    val previous = storage.loadLimits()[category] ?: 0
+                    "Установить лимит «${categoryTitle(context, category!!)}» $amount ₽${if (previous > 0) " вместо текущего $previous ₽" else ""}? Скажи «да» или «отмена»."
                 }
                 else -> {
-                    val previous = pending.optInt("previousAmount", 0)
+                    val previous = storage.loadIncome()[YearMonth.now().toString()] ?: 0
                     "Установить общий доход за текущий месяц $amount ₽${if (previous > 0) " вместо текущего $previous ₽" else ""}? Скажи «да» или «отмена»."
                 }
             }
+            return prepareOperation(manager, actionId, parameters, prompt)
         }
         // Чтение бюджета и сохранённых мест выполняет существующий локальный движок,
         // который обращается к реальным BudgetStorage и PlacesCache.
@@ -388,4 +380,192 @@ object VoiceCommandDispatcher {
 
         return null
     }
+
+    private fun prepareOperation(
+        manager: ConfirmationManager,
+        actionId: ActionId,
+        parameters: Map<String, ActionParameterValue>,
+        prompt: String
+    ): String {
+        return when (val result = manager.prepare(
+            sessionId = SessionId(SESSION_ID),
+            actionId = actionId,
+            parameters = parameters,
+            confirmationPrompt = prompt
+        )) {
+            is OperationManagerResult.Success -> prompt
+            is OperationManagerResult.Busy ->
+                "Уже ожидает подтверждения другое действие. ${result.activeOperation.confirmationPrompt}"
+            is OperationManagerResult.Invalid ->
+                "Не удалось подготовить действие: ${result.errors.joinToString("; ")}."
+            is OperationManagerResult.StorageFailure ->
+                "Не удалось безопасно сохранить подготовленное действие. Ничего не изменено."
+            OperationManagerResult.NoActiveOperation,
+            is OperationManagerResult.WrongOperation,
+            is OperationManagerResult.WrongSession,
+            is OperationManagerResult.InvalidState ->
+                "Не удалось подготовить действие из-за конфликта состояния. Ничего не изменено."
+        }
+    }
+
+    private fun executeConfirmedOperation(
+        context: Context,
+        manager: ConfirmationManager,
+        pending: PendingOperation
+    ): String {
+        val request = pending.request
+        val sessionId = request.sessionId
+        val operationId = request.operationId
+
+        val confirmed = when (pending.status) {
+            OperationStatus.AWAITING_CONFIRMATION -> manager.confirm(sessionId, operationId)
+            OperationStatus.CONFIRMED -> OperationManagerResult.Success(pending)
+            else -> OperationManagerResult.InvalidState(pending, "AWAITING_CONFIRMATION or CONFIRMED")
+        }
+        if (confirmed !is OperationManagerResult.Success) {
+            return "Не удалось подтвердить именно это действие. Ничего не выполнялось."
+        }
+
+        val started = manager.beginExecution(sessionId, operationId)
+        if (started !is OperationManagerResult.Success) {
+            return "Подтверждение принято, но не удалось зафиксировать начало выполнения. Действие не запускалось."
+        }
+
+        return try {
+            val outcome = executeDomainOperation(context, pending)
+            val terminal = if (outcome.success) {
+                manager.complete(sessionId, operationId)
+            } else {
+                manager.fail(sessionId, operationId)
+            }
+            if (terminal is OperationManagerResult.Success) {
+                outcome.message
+            } else {
+                manager.markResultUnknown(sessionId, operationId)
+                "Данные могли измениться, но не удалось надёжно зафиксировать результат. Не повторяю операцию автоматически."
+            }
+        } catch (error: Exception) {
+            manager.markResultUnknown(sessionId, operationId)
+            "Выполнение было прервано: ${error.message ?: "неизвестная ошибка"}. Результат сохранения не установлен; повторно действие не запускаю."
+        }
+    }
+
+    private fun executeDomainOperation(
+        context: Context,
+        pending: PendingOperation
+    ): DomainExecutionOutcome {
+        val parameters = pending.request.parameters
+        fun text(name: String): String? =
+            (parameters[name] as? ActionParameterValue.Text)?.value
+        fun number(name: String): Long? =
+            (parameters[name] as? ActionParameterValue.Integer)?.value
+
+        return when (pending.request.actionId.value) {
+            "task.create" -> {
+                val title = text("title").orEmpty()
+                if (title.isBlank()) return DomainExecutionOutcome(false, "Не указано название задачи. Ничего не добавлено.")
+                val dueAt = number("dueAtEpochMillis")
+                val reminderAt = number("reminderAtEpochMillis")
+                val priority = if (text("priority") == TaskPriority.HIGH.name) TaskPriority.HIGH else TaskPriority.NORMAL
+                val storage = TaskStorage(context)
+                val task = storage.add(title, dueAt = dueAt, reminderAt = reminderAt, priority = priority)
+                if (reminderAt != null) TaskReminderScheduler.schedule(context, task)
+                val saved = storage.load().any { it.id == task.id }
+                if (saved) {
+                    DomainExecutionOutcome(true, "Подтверждено. Задача «${task.title}» действительно добавлена.", task.id)
+                } else {
+                    DomainExecutionOutcome(false, "Не удалось подтвердить сохранение задачи. Проверь список задач.")
+                }
+            }
+
+            "calendar.event.create" -> {
+                val title = text("title").orEmpty()
+                val startsAt = number("startsAtEpochMillis") ?: 0L
+                if (title.isBlank() || startsAt <= 0L) return DomainExecutionOutcome(false, "Не хватает данных события. Ничего не добавлено.")
+                val storage = CalendarStorage(context)
+                val event = storage.add(title, startsAt)
+                CalendarReminderScheduler.schedule(context, event)
+                val saved = storage.load().any { it.id == event.id }
+                if (saved) {
+                    DomainExecutionOutcome(true, "Подтверждено. Событие «${event.title}» действительно сохранено в календаре.", event.id)
+                } else {
+                    DomainExecutionOutcome(false, "Не удалось подтвердить сохранение события. Проверь календарь.")
+                }
+            }
+
+            "budget.expense.create" -> {
+                val amount = number("amountRub")?.toInt() ?: 0
+                val category = text("categoryKey").orEmpty()
+                if (amount <= 0 || category.isBlank()) return DomainExecutionOutcome(false, "Некорректные данные расхода. Ничего не сохранено.")
+                val storage = com.lifenavigator.app.data.local.BudgetStorage(context)
+                val expense = Expense(
+                    UUID.randomUUID().toString(),
+                    category,
+                    amount,
+                    null,
+                    LocalDate.now(ZoneId.systemDefault()).toEpochDay()
+                )
+                val entries = storage.loadExpenses().toMutableList()
+                entries.add(expense)
+                storage.saveExpenses(entries)
+                val saved = storage.loadExpenses().any { it.id == expense.id }
+                if (saved) {
+                    DomainExecutionOutcome(true, "Расход $amount ₽ сохранён: ${categoryTitle(context, category)}.", expense.id)
+                } else {
+                    DomainExecutionOutcome(false, "Не удалось подтвердить сохранение расхода. Проверь бюджет.")
+                }
+            }
+
+            "budget.expense.delete" -> {
+                val expenseId = text("expenseId").orEmpty()
+                val storage = com.lifenavigator.app.data.local.BudgetStorage(context)
+                val expenses = storage.loadExpenses()
+                if (expenseId.isBlank() || expenses.none { it.id == expenseId }) return DomainExecutionOutcome(false, "Эта трата уже отсутствует. Ничего не изменено.")
+                storage.saveExpenses(expenses.filterNot { it.id == expenseId })
+                val deleted = storage.loadExpenses().none { it.id == expenseId }
+                if (deleted) {
+                    DomainExecutionOutcome(true, "Трата удалена из бюджета.", expenseId)
+                } else {
+                    DomainExecutionOutcome(false, "Не удалось подтвердить удаление траты. Проверь бюджет.")
+                }
+            }
+
+            "budget.income.set" -> {
+                val amount = number("amountRub")?.toInt() ?: 0
+                if (amount <= 0) return DomainExecutionOutcome(false, "Некорректная сумма дохода. Ничего не изменено.")
+                val storage = com.lifenavigator.app.data.local.BudgetStorage(context)
+                val month = YearMonth.now()
+                storage.saveIncome(month, amount)
+                val saved = storage.loadIncome()[month.toString()] == amount
+                if (saved) DomainExecutionOutcome(true, "Доход $amount ₽ сохранён для текущего месяца.")
+                else DomainExecutionOutcome(false, "Не удалось подтвердить сохранение дохода. Проверь бюджет.")
+            }
+
+            "budget.limit.set" -> {
+                val amount = number("amountRub")?.toInt() ?: 0
+                val category = text("categoryKey").orEmpty()
+                if (amount <= 0 || category.isBlank()) return DomainExecutionOutcome(false, "Некорректные данные лимита. Ничего не изменено.")
+                val storage = com.lifenavigator.app.data.local.BudgetStorage(context)
+                storage.saveLimit(category, amount)
+                val saved = storage.loadLimits()[category] == amount
+                if (saved) DomainExecutionOutcome(true, "Лимит «${categoryTitle(context, category)}» установлен: $amount ₽.")
+                else DomainExecutionOutcome(false, "Не удалось подтвердить сохранение лимита. Проверь бюджет.")
+            }
+
+            else -> DomainExecutionOutcome(false, "Для этого действия ещё не подключён исполнитель. Ничего не изменено.")
+        }
+    }
+
+    private fun categoryTitle(context: Context, key: String): String =
+        NeedCategory.entries.firstOrNull { it.name == key }?.displayName
+            ?: com.lifenavigator.app.data.local.BudgetStorage(context)
+                .loadCustomCategories().firstOrNull { it.key == key }?.title
+            ?: key
+
+    private fun isConfirmationPrompt(message: String): Boolean =
+        listOf(
+            "Скажи «да", "Скажи «подтверждаю", "Сохранить?",
+            "Есть одно подготовленное действие", "Подтверди его"
+        ).any { message.contains(it, ignoreCase = true) }
+
 }
