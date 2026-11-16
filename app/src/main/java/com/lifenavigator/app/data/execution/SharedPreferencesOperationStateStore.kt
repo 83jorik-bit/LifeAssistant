@@ -169,6 +169,7 @@ class SharedPreferencesOperationStateStore(context: Context) : OperationStateSto
             .put("confirmationPrompt", operation.confirmationPrompt)
             .put("updatedAtEpochMillis", operation.updatedAtEpochMillis)
             .put("legacySource", operation.legacySource)
+            .put("expiresAtEpochMillis", operation.expiresAtEpochMillis)
             .toString()
     }
 
@@ -203,7 +204,9 @@ class SharedPreferencesOperationStateStore(context: Context) : OperationStateSto
             status = OperationStatus.valueOf(json.getString("status")),
             confirmationPrompt = json.getString("confirmationPrompt"),
             updatedAtEpochMillis = json.getLong("updatedAtEpochMillis"),
-            legacySource = json.optString("legacySource").takeIf { it.isNotBlank() }
+            legacySource = json.optString("legacySource").takeIf { it.isNotBlank() },
+            expiresAtEpochMillis = if (json.isNull("expiresAtEpochMillis")) null
+                else json.optLong("expiresAtEpochMillis").takeIf { it > 0L }
         )
     }
 
