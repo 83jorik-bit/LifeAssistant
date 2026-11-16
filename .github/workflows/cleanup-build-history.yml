@@ -30,7 +30,6 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const keepRunRecords = 10;
-            const keepArtifacts = 0;
             const maxAgeMs = 24 * 60 * 60 * 1000;
             const now = Date.now();
             const buildWorkflowNames = new Set(["Android CI", "Release for RuStore"]);
@@ -52,9 +51,6 @@ jobs:
             const keepRunIds = new Set(completedRuns.slice(0, keepRunRecords).map(run => run.id));
 
             // No APK/AAB build artifacts are retained in GitHub Actions.
-            const successfulMainBuilds = completedRuns.filter(run =>
-              run.head_branch === "main" && run.conclusion === "success"
-            );
             const keepArtifactRunIds = new Set();
 
             let deletedArtifacts = 0;
@@ -103,10 +99,7 @@ jobs:
               .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
 
             let deletedReleases = 0;
-            for (const [index, release] of debugReleases.entries()) {
-              const ageMs = now - Date.parse(release.created_at);
-              if (false) continue;
-
+            for (const release of debugReleases) {
               try {
                 await github.rest.repos.deleteRelease({ owner, repo, release_id: release.id });
                 try {
