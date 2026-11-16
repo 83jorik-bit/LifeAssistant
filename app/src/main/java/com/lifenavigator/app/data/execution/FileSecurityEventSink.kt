@@ -29,7 +29,7 @@ class FileSecurityEventSink(context: Context) : SecurityEventSink {
                 .put("detail", event.detail)
                 .toString() + "\n"
 
-            FileOutputStream(FILE_NAME.let(appContext::getFileStreamPath), true).use { output ->
+            FileOutputStream(appContext.getFileStreamPath(FILE_NAME), true).use { output ->
                 output.write(line.toByteArray(Charsets.UTF_8))
                 output.fd.sync()
             }
