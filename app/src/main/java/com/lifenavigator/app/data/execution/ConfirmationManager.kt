@@ -306,7 +306,7 @@ class ConfirmationManager(
             OperationStatus.COMPLETED, OperationStatus.FAILED ->
                 operation.status == OperationStatus.EXECUTING ||
                     operation.status == OperationStatus.RESULT_UNKNOWN
-            OperationStatus.CANCELLED ->
+            OperationStatus.CANCELLED, OperationStatus.REJECTED, OperationStatus.EXPIRED ->
                 operation.status == OperationStatus.AWAITING_CONFIRMATION ||
                     operation.status == OperationStatus.CONFIRMED
             else -> false
