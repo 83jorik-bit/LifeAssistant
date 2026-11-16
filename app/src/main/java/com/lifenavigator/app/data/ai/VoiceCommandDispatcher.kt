@@ -99,10 +99,11 @@ object VoiceCommandDispatcher {
                 "да", "да, выполнить", "да сохранить", "выполни", "подтверждаю",
                 "подтверждаю действие", "сохрани", "сохранить"
             )
-            val no = q in setOf(
-                "нет", "отмена", "отмени", "не надо", "не выполняй",
-                "отменить", "не сохраняй"
+            val reject = q in setOf(
+                "нет", "не надо", "не выполняй", "не сохраняй",
+                "отказываюсь", "отклоняю"
             )
+            val cancel = q in setOf("отмена", "отмени", "отменить")
 
             if (activeOperation.status == OperationStatus.RESULT_UNKNOWN) {
                 return "Предыдущее действие было прервано во время выполнения. Я не буду повторять его автоматически: сначала необходимо установить, сохранились ли данные."
@@ -110,13 +111,27 @@ object VoiceCommandDispatcher {
             if (activeOperation.status == OperationStatus.EXECUTING) {
                 return "Действие уже передано на выполнение. Повторный запуск заблокирован."
             }
-            if (no) {
-                return when (manager.cancel(
-                    activeOperation.request.sessionId,
-                    activeOperation.request.operationId
-                )) {
-                    is OperationManagerResult.Success -> "Операция отменена. Изменения не вносились."
-                    else -> "Не удалось зафиксировать отмену операции. Ничего нового не выполнялось."
+            if (reject || cancel) {
+                val result = if (reject) {
+                    manager.reject(
+                        activeOperation.request.sessionId,
+                        activeOperation.request.operationId
+                    )
+                } else {
+                    manager.cancel(
+                        activeOperation.request.sessionId,
+                        activeOperation.request.operationId
+                    )
+                }
+                return when {
+                    result is OperationManagerResult.Success && reject ->
+                        "Операция отклонена. Изменения не вносились."
+                    result is OperationManagerResult.Success ->
+                        "Операция отменена. Изменения не вносились."
+                    reject ->
+                        "Не удалось зафиксировать отказ от операции. Ничего нового не выполнялось."
+                    else ->
+                        "Не удалось зафиксировать отмену операции. Ничего нового не выполнялось."
                 }
             }
             if (yes) return executeConfirmedOperation(context, manager, activeOperation)
