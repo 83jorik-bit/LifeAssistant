@@ -8,7 +8,6 @@ import com.lifenavigator.app.data.local.TaskStorage
 import com.lifenavigator.app.data.model.TaskPriority
 import com.lifenavigator.app.data.model.Expense
 import com.lifenavigator.app.data.model.NeedCategory
-import org.json.JSONObject
 import java.time.YearMonth
 import java.util.UUID
 import java.time.Instant
@@ -441,8 +440,7 @@ object VoiceCommandDispatcher {
             if (terminal is OperationManagerResult.Success) {
                 outcome.message
             } else {
-                manager.markResultUnknown(sessionId, operationId)
-                "Данные могли измениться, но не удалось надёжно зафиксировать результат. Не повторяю операцию автоматически."
+                "Изменение могло сохраниться, но итог операции не удалось надёжно зафиксировать. Повторный запуск заблокирован."
             }
         } catch (error: Exception) {
             manager.markResultUnknown(sessionId, operationId)
@@ -565,7 +563,8 @@ object VoiceCommandDispatcher {
     private fun isConfirmationPrompt(message: String): Boolean =
         listOf(
             "Скажи «да", "Скажи «подтверждаю", "Сохранить?",
-            "Есть одно подготовленное действие", "Подтверди его"
+            "Есть одно подготовленное действие", "Подтверди его",
+            "Уже ожидает подтверждения"
         ).any { message.contains(it, ignoreCase = true) }
 
 }
