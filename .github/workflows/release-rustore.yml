@@ -129,13 +129,6 @@ jobs:
           SEND_TO_MODERATION: ${{ inputs.send_to_moderation }}
         run: bash scripts/rustore-publish.sh
 
-      - name: Upload AAB for RuStore
-        uses: actions/upload-artifact@v4
-        with:
-          retention-days: 30
-          name: rustore-release-${{ inputs.version_name }}
-          path: app/build/outputs/bundle/release/app-release.aab
-
       - name: Remove temporary secrets from runner
         if: always()
         shell: bash
