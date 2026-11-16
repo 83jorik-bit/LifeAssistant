@@ -132,7 +132,8 @@ class SharedPreferencesOperationStateStore(context: Context) : OperationStateSto
                     request = request,
                     status = OperationStatus.AWAITING_CONFIRMATION,
                     confirmationPrompt = "Найдено ранее подготовленное действие. Подтверди его или отмени.",
-                    updatedAtEpochMillis = now
+                    updatedAtEpochMillis = now,
+                    legacySource = source
                 ),
                 source = source
             )
@@ -167,6 +168,7 @@ class SharedPreferencesOperationStateStore(context: Context) : OperationStateSto
             .put("status", operation.status.name)
             .put("confirmationPrompt", operation.confirmationPrompt)
             .put("updatedAtEpochMillis", operation.updatedAtEpochMillis)
+            .put("legacySource", operation.legacySource)
             .toString()
     }
 
@@ -200,7 +202,8 @@ class SharedPreferencesOperationStateStore(context: Context) : OperationStateSto
             request = request,
             status = OperationStatus.valueOf(json.getString("status")),
             confirmationPrompt = json.getString("confirmationPrompt"),
-            updatedAtEpochMillis = json.getLong("updatedAtEpochMillis")
+            updatedAtEpochMillis = json.getLong("updatedAtEpochMillis"),
+            legacySource = json.optString("legacySource").takeIf { it.isNotBlank() }
         )
     }
 
