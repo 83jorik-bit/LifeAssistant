@@ -218,6 +218,19 @@ object LifeAssistantActionRegistry {
                     executorKey = "tasks"
                 ),
                 ActionDefinition(
+                    id = ActionId("task.complete"),
+                    domain = ActionDomain.TASKS,
+                    kind = ActionKind.MUTATION,
+                    parameters = listOf(
+                        ActionParameterDefinition(
+                            name = "taskId",
+                            type = ActionParameterType.TEXT
+                        )
+                    ),
+                    confirmationPolicy = ConfirmationPolicy.REQUIRED,
+                    executorKey = "tasks"
+                ),
+                ActionDefinition(
                     id = ActionId("calendar.event.create"),
                     domain = ActionDomain.CALENDAR,
                     kind = ActionKind.MUTATION,
