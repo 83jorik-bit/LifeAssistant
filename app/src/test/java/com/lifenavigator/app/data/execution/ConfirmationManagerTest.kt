@@ -238,6 +238,24 @@ class ConfirmationManagerTest {
     }
 
     @Test
+    fun terminalStateAndActiveSlotAreCommittedAtomically() {
+        val store = InMemoryOperationStateStore()
+        val manager = ConfirmationManager(store)
+        val prepared = prepareExpense(manager) as OperationManagerResult.Success
+        val id = prepared.operation.request.operationId
+
+        assertTrue(manager.confirm(session, id) is OperationManagerResult.Success)
+        assertTrue(manager.beginExecution(session, id) is OperationManagerResult.Success)
+        store.failFinishActive = true
+
+        val failedCommit = manager.complete(session, id)
+
+        assertTrue(failedCommit is OperationManagerResult.StorageFailure)
+        assertEquals(OperationStatus.EXECUTING, store.active?.status)
+        assertNull(store.last)
+    }
+
+    @Test
     fun expiredOperationIsPersistedBeforeActiveStateIsCleared() {
         var now = 100L
         val store = InMemoryOperationStateStore()
@@ -285,6 +303,7 @@ class ConfirmationManagerTest {
         var legacyCleared: Boolean = false
         var failWriteActive: Boolean = false
         var failWriteLast: Boolean = false
+        var failFinishActive: Boolean = false
 
         override fun readActive(): PendingOperation? = active
         override fun createActiveIfAbsent(operation: PendingOperation): Boolean {
@@ -305,6 +324,12 @@ class ConfirmationManagerTest {
         override fun writeLast(operation: PendingOperation): Boolean {
             if (failWriteLast) return false
             last = operation
+            return true
+        }
+        override fun finishActive(operation: PendingOperation): Boolean {
+            if (failFinishActive) return false
+            last = operation
+            active = null
             return true
         }
         override fun readNextLegacy(): LegacyPendingImport = legacy
