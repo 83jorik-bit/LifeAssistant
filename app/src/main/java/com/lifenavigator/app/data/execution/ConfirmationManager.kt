@@ -94,6 +94,14 @@ class ConfirmationManager(
                 "Legacy pending operation is unreadable in ${legacy.source}; it was preserved"
             )
             is LegacyPendingImport.Ready -> {
+                val validation = registry.validate(legacy.operation.request)
+                if (validation !is ActionValidationResult.Valid ||
+                    validation.definition.confirmationPolicy != ConfirmationPolicy.REQUIRED
+                ) {
+                    throw IllegalStateException(
+                        "Legacy pending operation failed contract validation; it was preserved"
+                    )
+                }
                 if (!store.writeActive(legacy.operation)) {
                     throw IllegalStateException("Unable to migrate legacy pending operation")
                 }
@@ -187,6 +195,9 @@ class ConfirmationManager(
     @Synchronized
     fun cancel(operationId: OperationId): OperationManagerResult {
         val operation = findOperation(operationId) ?: return OperationManagerResult.NoActiveOperation
+        if (operation.request.operationId != operationId) {
+            return OperationManagerResult.WrongOperation(operation.request.operationId, operationId)
+        }
         if (operation.status != OperationStatus.AWAITING_CONFIRMATION &&
             operation.status != OperationStatus.CONFIRMED
         ) {
@@ -212,6 +223,9 @@ class ConfirmationManager(
                 resolvedStatus == OperationStatus.FAILED
         ) { "Unknown result can only be resolved as COMPLETED or FAILED" }
         val operation = findOperation(operationId) ?: return OperationManagerResult.NoActiveOperation
+        if (operation.request.operationId != operationId) {
+            return OperationManagerResult.WrongOperation(operation.request.operationId, operationId)
+        }
         if (operation.status != OperationStatus.RESULT_UNKNOWN) {
             return OperationManagerResult.InvalidState(operation, "RESULT_UNKNOWN")
         }
@@ -249,6 +263,9 @@ class ConfirmationManager(
         target: OperationStatus
     ): OperationManagerResult {
         val operation = findOperation(operationId) ?: return OperationManagerResult.NoActiveOperation
+        if (operation.request.operationId != operationId) {
+            return OperationManagerResult.WrongOperation(operation.request.operationId, operationId)
+        }
         val allowed = when (target) {
             OperationStatus.COMPLETED, OperationStatus.FAILED ->
                 operation.status == OperationStatus.EXECUTING ||
@@ -281,7 +298,7 @@ class ConfirmationManager(
         } catch (error: Exception) {
             throw IllegalStateException("Unable to access operation state", error)
         } ?: return null
-        return if (operation.request.operationId == operationId) operation else null
+        return operation
     }
 
     private fun recoverInterruptedExecution() {
