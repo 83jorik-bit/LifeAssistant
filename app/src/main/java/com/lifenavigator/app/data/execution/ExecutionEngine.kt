@@ -233,8 +233,8 @@ class ExecutionEngine(
         if (started !is OperationManagerResult.Success) {
             return result(
                 operationId,
-                OperationStatus.FAILED,
-                "Не удалось зафиксировать начало выполнения. Исполнитель не вызывался.",
+                OperationStatus.CONFIRMED,
+                "Не удалось зафиксировать начало выполнения. Исполнитель не вызывался; операция остаётся подтверждённой.",
                 "EXECUTION_START_FAILED"
             )
         }
