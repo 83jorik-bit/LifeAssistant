@@ -44,6 +44,14 @@ class SharedPreferencesOperationStateStore(context: Context) : OperationStateSto
     override fun writeLast(operation: PendingOperation): Boolean =
         state.edit().putString(KEY_LAST, encode(operation)).commit()
 
+    override fun finishActive(operation: PendingOperation): Boolean =
+        synchronized(ACTIVE_OPERATION_LOCK) {
+            state.edit()
+                .putString(KEY_LAST, encode(operation))
+                .remove(KEY_ACTIVE)
+                .commit()
+        }
+
     override fun readNextLegacy(): LegacyPendingImport {
         val actionRaw = appContext
             .getSharedPreferences(LEGACY_ACTION_PREFERENCES, Context.MODE_PRIVATE)
