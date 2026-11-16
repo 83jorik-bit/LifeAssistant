@@ -479,6 +479,21 @@ object VoiceCommandDispatcher {
                 }
             }
 
+            "task.complete" -> {
+                val taskId = text("taskId").orEmpty()
+                val storage = TaskStorage(context)
+                val task = storage.load().firstOrNull { it.id == taskId && !it.isCompleted }
+                    ?: return DomainExecutionOutcome(false, "Активная задача больше не найдена. Ничего не изменено.")
+                storage.update(task.copy(isCompleted = true))
+                TaskReminderScheduler.cancel(context, task)
+                val saved = storage.load().any { it.id == taskId && it.isCompleted }
+                if (saved) {
+                    DomainExecutionOutcome(true, "Готово. Задача «${task.title}» отмечена выполненной.", task.id)
+                } else {
+                    DomainExecutionOutcome(false, "Не удалось подтвердить изменение задачи. Проверь список задач.")
+                }
+            }
+
             "calendar.event.create" -> {
                 val title = text("title").orEmpty()
                 val startsAt = number("startsAtEpochMillis") ?: 0L
