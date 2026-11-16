@@ -80,6 +80,7 @@ enum class OperationStatus {
     REJECTED,
     EXPIRED,
     EXECUTING,
+    RESULT_UNKNOWN,
     COMPLETED,
     FAILED,
     CANCELLED
