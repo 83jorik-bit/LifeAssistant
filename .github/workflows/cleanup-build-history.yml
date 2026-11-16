@@ -23,7 +23,7 @@ jobs:
   cleanup:
     runs-on: ubuntu-24.04
     steps:
-      - name: Remove excess build artifacts and old run records while keeping recent builds
+      - name: Delete all package artifacts and expire old run records
         uses: actions/github-script@v9
         with:
           script: |
@@ -47,7 +47,7 @@ jobs:
               .filter(run => run.status === "completed" && buildWorkflowNames.has(run.name))
               .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
 
-            // Keep 10 run records for history, independently from APK artifact retention.
+            // Keep the 10 newest run records for audit history; remove every package artifact.
             const keepRunIds = new Set(completedRuns.slice(0, keepRunRecords).map(run => run.id));
 
             // No APK/AAB build artifacts are retained in GitHub Actions.
@@ -113,4 +113,4 @@ jobs:
               }
             }
 
-            core.notice(`Cleanup complete. Kept ${Math.min(completedRuns.length, keepRunRecords)} run records and ${Math.min(successfulMainBuilds.length, keepArtifacts)} downloadable build artifacts; deleted ${deletedArtifacts} artifacts, ${deletedRuns} old run records, and ${deletedReleases} debug releases.`);
+            core.notice(`Cleanup complete. Kept ${Math.min(completedRuns.length, keepRunRecords)} recent run records and no package artifacts; deleted ${deletedArtifacts} artifacts, ${deletedRuns} old run records, and ${deletedReleases} debug releases.`);
