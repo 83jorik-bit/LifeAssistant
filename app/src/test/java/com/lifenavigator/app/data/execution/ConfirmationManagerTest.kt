@@ -100,7 +100,7 @@ class ConfirmationManagerTest {
         val completed = manager.complete(session, id)
         assertTrue(completed is OperationManagerResult.Success)
         assertEquals(OperationStatus.COMPLETED, store.last?.status)
-        assertEquals(null, store.active)
+        assertNull(store.active)
         assertNull(manager.activeOperation())
     }
 
@@ -202,7 +202,7 @@ class ConfirmationManagerTest {
         )
 
         assertTrue(result is OperationManagerResult.StorageFailure)
-        assertFalse(store.legacyCleared)
+        assertTrue(!store.legacyCleared)
         assertEquals(null, store.active)
     }
 
