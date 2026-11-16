@@ -8,15 +8,22 @@ class SecurityAuthorizationManagerTest {
 
     @Test
     fun unclassifiedMutationCannotBeSilentlyAuthorized() {
-        val request = request(
-            actionId = ActionId("budget.expense.create"),
-            parameters = mapOf(
-                "amountRub" to ActionParameterValue.Integer(1200),
-                "categoryKey" to ActionParameterValue.Text("GROCERY")
+        val actionId = ActionId("budget.expense.import")
+        val registry = registryFor(
+            ActionDefinition(
+                id = actionId,
+                domain = ActionDomain.BUDGET,
+                kind = ActionKind.MUTATION,
+                parameters = emptyList(),
+                confirmationPolicy = ConfirmationPolicy.NOT_REQUIRED,
+                securityCategory = SecurityCategory.UNCLASSIFIED,
+                executorKey = "budget"
             )
         )
+        val request = request(actionId, emptyMap())
         val events = mutableListOf<SecurityEvent>()
         val manager = SecurityAuthorizationManager(
+            registry = registry,
             eventSink = SecurityEventSink { events += it; true }
         )
         val context = SecurityContext(
