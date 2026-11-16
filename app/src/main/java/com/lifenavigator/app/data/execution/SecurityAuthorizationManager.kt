@@ -19,6 +19,7 @@ data class SecurityPolicy(
         val criticalMinimum = when (definition.securityCategory) {
             SecurityCategory.A -> AuthenticationLevel.STRONG
             SecurityCategory.B -> AuthenticationLevel.STANDARD
+            SecurityCategory.STANDARD,
             SecurityCategory.UNCLASSIFIED -> AuthenticationLevel.NONE
         }
         val userMinimum = userMinimumAuthByDomain[definition.domain] ?: AuthenticationLevel.NONE
