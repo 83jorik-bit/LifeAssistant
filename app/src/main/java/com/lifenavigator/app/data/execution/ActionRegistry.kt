@@ -110,8 +110,8 @@ sealed interface ActionValidationResult {
 /**
  * Initial catalog of currently identifiable LifeAssistant operations.
  *
- * Security categories remain UNCLASSIFIED until the separate operation-to-risk
- * matrix is approved. Mutations require confirmation by default in this catalog.
+ * Every registered operation has an explicit security classification. Routine
+ * mutations do not require a second confirmation; category A and B mutations do.
  */
 object LifeAssistantActionRegistry {
 
@@ -138,6 +138,7 @@ object LifeAssistantActionRegistry {
                             required = false
                         )
                     ),
+                    securityCategory = SecurityCategory.B,
                     confirmationPolicy = ConfirmationPolicy.REQUIRED,
                     executorKey = "budget"
                 ),
@@ -151,6 +152,7 @@ object LifeAssistantActionRegistry {
                             type = ActionParameterType.TEXT
                         )
                     ),
+                    securityCategory = SecurityCategory.A,
                     confirmationPolicy = ConfirmationPolicy.REQUIRED,
                     executorKey = "budget"
                 ),
@@ -165,6 +167,7 @@ object LifeAssistantActionRegistry {
                             minimumInteger = 1
                         )
                     ),
+                    securityCategory = SecurityCategory.B,
                     confirmationPolicy = ConfirmationPolicy.REQUIRED,
                     executorKey = "budget"
                 ),
@@ -183,6 +186,7 @@ object LifeAssistantActionRegistry {
                             minimumInteger = 1
                         )
                     ),
+                    securityCategory = SecurityCategory.B,
                     confirmationPolicy = ConfirmationPolicy.REQUIRED,
                     executorKey = "budget"
                 ),
@@ -214,7 +218,8 @@ object LifeAssistantActionRegistry {
                             allowedTextValues = setOf("NORMAL", "HIGH")
                         )
                     ),
-                    confirmationPolicy = ConfirmationPolicy.REQUIRED,
+                    securityCategory = SecurityCategory.STANDARD,
+                    confirmationPolicy = ConfirmationPolicy.NOT_REQUIRED,
                     executorKey = "tasks"
                 ),
                 ActionDefinition(
@@ -227,7 +232,8 @@ object LifeAssistantActionRegistry {
                             type = ActionParameterType.TEXT
                         )
                     ),
-                    confirmationPolicy = ConfirmationPolicy.REQUIRED,
+                    securityCategory = SecurityCategory.STANDARD,
+                    confirmationPolicy = ConfirmationPolicy.NOT_REQUIRED,
                     executorKey = "tasks"
                 ),
                 ActionDefinition(
@@ -262,7 +268,8 @@ object LifeAssistantActionRegistry {
                             minimumInteger = 1
                         )
                     ),
-                    confirmationPolicy = ConfirmationPolicy.REQUIRED,
+                    securityCategory = SecurityCategory.STANDARD,
+                    confirmationPolicy = ConfirmationPolicy.NOT_REQUIRED,
                     executorKey = "calendar"
                 ),
                 ActionDefinition(
@@ -270,6 +277,7 @@ object LifeAssistantActionRegistry {
                     domain = ActionDomain.BUDGET,
                     kind = ActionKind.READ,
                     parameters = emptyList(),
+                    securityCategory = SecurityCategory.STANDARD,
                     confirmationPolicy = ConfirmationPolicy.NOT_REQUIRED,
                     executorKey = "budget"
                 ),
@@ -278,6 +286,7 @@ object LifeAssistantActionRegistry {
                     domain = ActionDomain.BUDGET,
                     kind = ActionKind.READ,
                     parameters = emptyList(),
+                    securityCategory = SecurityCategory.STANDARD,
                     confirmationPolicy = ConfirmationPolicy.NOT_REQUIRED,
                     executorKey = "budget"
                 ),
@@ -286,6 +295,7 @@ object LifeAssistantActionRegistry {
                     domain = ActionDomain.TASKS,
                     kind = ActionKind.READ,
                     parameters = emptyList(),
+                    securityCategory = SecurityCategory.STANDARD,
                     confirmationPolicy = ConfirmationPolicy.NOT_REQUIRED,
                     executorKey = "tasks"
                 ),
@@ -294,6 +304,7 @@ object LifeAssistantActionRegistry {
                     domain = ActionDomain.CALENDAR,
                     kind = ActionKind.READ,
                     parameters = emptyList(),
+                    securityCategory = SecurityCategory.STANDARD,
                     confirmationPolicy = ConfirmationPolicy.NOT_REQUIRED,
                     executorKey = "calendar"
                 ),
@@ -302,6 +313,7 @@ object LifeAssistantActionRegistry {
                     domain = ActionDomain.PLACES,
                     kind = ActionKind.READ,
                     parameters = emptyList(),
+                    securityCategory = SecurityCategory.STANDARD,
                     confirmationPolicy = ConfirmationPolicy.NOT_REQUIRED,
                     executorKey = "places"
                 )
