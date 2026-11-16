@@ -45,6 +45,8 @@ interface OperationStateStore {
     fun clearActive(): Boolean
     fun readLast(): PendingOperation?
     fun writeLast(operation: PendingOperation): Boolean
+    /** Atomically stores the terminal operation and removes the active slot. */
+    fun finishActive(operation: PendingOperation): Boolean
 
     /** Imports one legacy pending action without deleting its source. */
     fun readNextLegacy(): LegacyPendingImport
@@ -98,11 +100,8 @@ class ConfirmationManager(
                     status = OperationStatus.EXPIRED,
                     updatedAtEpochMillis = nowMillis()
                 )
-                if (!store.writeLast(expired)) {
-                    throw IllegalStateException("Unable to persist expired operation")
-                }
-                if (!store.clearActive()) {
-                    throw IllegalStateException("Expired operation saved, but active state could not be cleared")
+                if (!store.finishActive(expired)) {
+                    throw IllegalStateException("Unable to atomically finalize expired operation")
                 }
                 return null
             }
@@ -117,8 +116,8 @@ class ConfirmationManager(
                 return normalized
             }
             if (isTerminal(active.status)) {
-                if (!store.writeLast(active) || !store.clearActive()) {
-                    throw IllegalStateException("Unable to finalize stored operation")
+                if (!store.finishActive(active)) {
+                    throw IllegalStateException("Unable to atomically finalize stored operation")
                 }
                 return null
             }
@@ -331,11 +330,8 @@ class ConfirmationManager(
             status = target,
             updatedAtEpochMillis = nowMillis()
         )
-        if (!store.writeLast(updated)) {
-            return OperationManagerResult.StorageFailure("Unable to persist terminal operation")
-        }
-        if (!store.clearActive()) {
-            return OperationManagerResult.StorageFailure("Terminal operation saved, but active state could not be cleared")
+        if (!store.finishActive(updated)) {
+            return OperationManagerResult.StorageFailure("Unable to atomically persist terminal operation")
         }
         return OperationManagerResult.Success(updated)
     }
