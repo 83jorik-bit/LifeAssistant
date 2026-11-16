@@ -287,6 +287,11 @@ class ConfirmationManagerTest {
         var failWriteLast: Boolean = false
 
         override fun readActive(): PendingOperation? = active
+        override fun createActiveIfAbsent(operation: PendingOperation): Boolean {
+            if (active != null) return false
+            active = operation
+            return true
+        }
         override fun writeActive(operation: PendingOperation): Boolean {
             if (failWriteActive) return false
             active = operation
