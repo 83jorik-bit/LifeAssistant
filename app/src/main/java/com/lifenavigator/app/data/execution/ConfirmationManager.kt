@@ -51,6 +51,7 @@ sealed interface OperationManagerResult {
     data class Invalid(val errors: List<String>) : OperationManagerResult
     data object NoActiveOperation : OperationManagerResult
     data class WrongOperation(val expected: OperationId, val received: OperationId) : OperationManagerResult
+    data class WrongSession(val expected: SessionId, val received: SessionId) : OperationManagerResult
     data class InvalidState(val operation: PendingOperation, val expected: String) : OperationManagerResult
     data class StorageFailure(val message: String) : OperationManagerResult
 }
@@ -177,27 +178,25 @@ class ConfirmationManager(
     }
 
     @Synchronized
-    fun confirm(operationId: OperationId): OperationManagerResult =
-        transition(operationId, OperationStatus.AWAITING_CONFIRMATION, OperationStatus.CONFIRMED)
+    fun confirm(sessionId: SessionId, operationId: OperationId): OperationManagerResult =
+        transition(sessionId, operationId, OperationStatus.AWAITING_CONFIRMATION, OperationStatus.CONFIRMED)
 
     @Synchronized
-    fun beginExecution(operationId: OperationId): OperationManagerResult =
-        transition(operationId, OperationStatus.CONFIRMED, OperationStatus.EXECUTING)
+    fun beginExecution(sessionId: SessionId, operationId: OperationId): OperationManagerResult =
+        transition(sessionId, operationId, OperationStatus.CONFIRMED, OperationStatus.EXECUTING)
 
     @Synchronized
-    fun complete(operationId: OperationId): OperationManagerResult =
-        finish(operationId, OperationStatus.COMPLETED)
+    fun complete(sessionId: SessionId, operationId: OperationId): OperationManagerResult =
+        finish(sessionId, operationId, OperationStatus.COMPLETED)
 
     @Synchronized
-    fun fail(operationId: OperationId): OperationManagerResult =
-        finish(operationId, OperationStatus.FAILED)
+    fun fail(sessionId: SessionId, operationId: OperationId): OperationManagerResult =
+        finish(sessionId, operationId, OperationStatus.FAILED)
 
     @Synchronized
-    fun cancel(operationId: OperationId): OperationManagerResult {
+    fun cancel(sessionId: SessionId, operationId: OperationId): OperationManagerResult {
         val operation = findOperation(operationId) ?: return OperationManagerResult.NoActiveOperation
-        if (operation.request.operationId != operationId) {
-            return OperationManagerResult.WrongOperation(operation.request.operationId, operationId)
-        }
+        identityError(operation, sessionId, operationId)?.let { return it }
         if (operation.status != OperationStatus.AWAITING_CONFIRMATION &&
             operation.status != OperationStatus.CONFIRMED
         ) {
@@ -210,11 +209,12 @@ class ConfirmationManager(
     }
 
     @Synchronized
-    fun markResultUnknown(operationId: OperationId): OperationManagerResult =
-        transition(operationId, OperationStatus.EXECUTING, OperationStatus.RESULT_UNKNOWN)
+    fun markResultUnknown(sessionId: SessionId, operationId: OperationId): OperationManagerResult =
+        transition(sessionId, operationId, OperationStatus.EXECUTING, OperationStatus.RESULT_UNKNOWN)
 
     @Synchronized
     fun resolveUnknown(
+        sessionId: SessionId,
         operationId: OperationId,
         resolvedStatus: OperationStatus
     ): OperationManagerResult {
@@ -223,9 +223,7 @@ class ConfirmationManager(
                 resolvedStatus == OperationStatus.FAILED
         ) { "Unknown result can only be resolved as COMPLETED or FAILED" }
         val operation = findOperation(operationId) ?: return OperationManagerResult.NoActiveOperation
-        if (operation.request.operationId != operationId) {
-            return OperationManagerResult.WrongOperation(operation.request.operationId, operationId)
-        }
+        identityError(operation, sessionId, operationId)?.let { return it }
         if (operation.status != OperationStatus.RESULT_UNKNOWN) {
             return OperationManagerResult.InvalidState(operation, "RESULT_UNKNOWN")
         }
@@ -233,17 +231,13 @@ class ConfirmationManager(
     }
 
     private fun transition(
+        sessionId: SessionId,
         operationId: OperationId,
         expected: OperationStatus,
         target: OperationStatus
     ): OperationManagerResult {
         val operation = findOperation(operationId) ?: return OperationManagerResult.NoActiveOperation
-        if (operation.request.operationId != operationId) {
-            return OperationManagerResult.WrongOperation(
-                operation.request.operationId,
-                operationId
-            )
-        }
+        identityError(operation, sessionId, operationId)?.let { return it }
         if (operation.status != expected) {
             return OperationManagerResult.InvalidState(operation, expected.name)
         }
@@ -259,13 +253,12 @@ class ConfirmationManager(
     }
 
     private fun finish(
+        sessionId: SessionId,
         operationId: OperationId,
         target: OperationStatus
     ): OperationManagerResult {
         val operation = findOperation(operationId) ?: return OperationManagerResult.NoActiveOperation
-        if (operation.request.operationId != operationId) {
-            return OperationManagerResult.WrongOperation(operation.request.operationId, operationId)
-        }
+        identityError(operation, sessionId, operationId)?.let { return it }
         val allowed = when (target) {
             OperationStatus.COMPLETED, OperationStatus.FAILED ->
                 operation.status == OperationStatus.EXECUTING ||
@@ -290,6 +283,20 @@ class ConfirmationManager(
             return OperationManagerResult.StorageFailure("Terminal operation saved, but active state could not be cleared")
         }
         return OperationManagerResult.Success(updated)
+    }
+
+    private fun identityError(
+        operation: PendingOperation,
+        sessionId: SessionId,
+        operationId: OperationId
+    ): OperationManagerResult? {
+        if (operation.request.sessionId != sessionId) {
+            return OperationManagerResult.WrongSession(operation.request.sessionId, sessionId)
+        }
+        if (operation.request.operationId != operationId) {
+            return OperationManagerResult.WrongOperation(operation.request.operationId, operationId)
+        }
+        return null
     }
 
     private fun findOperation(operationId: OperationId): PendingOperation? {
