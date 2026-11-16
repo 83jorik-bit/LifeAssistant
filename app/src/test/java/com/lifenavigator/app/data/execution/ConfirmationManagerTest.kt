@@ -262,7 +262,7 @@ class ConfirmationManagerTest {
         val manager = ConfirmationManager(store, nowMillis = { now })
         val prepared = prepareExpense(manager) as OperationManagerResult.Success
         store.active = prepared.operation.copy(expiresAtEpochMillis = 150L)
-        store.failWriteLast = true
+        store.failFinishActive = true
 
         now = 150L
         val failure = runCatching { manager.activeOperation() }
