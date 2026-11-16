@@ -63,9 +63,8 @@ enum class ConfirmationPolicy {
 }
 
 /**
- * UNCLASSIFIED is deliberate: the project has approved categories A and B,
- * but the exact mapping of every action to a category remains an open decision.
- * SAM must not infer a category from the action name.
+ * STANDARD is an explicit low-risk classification. UNCLASSIFIED is reserved
+ * for actions awaiting assessment; SAM must never infer a category by name.
  */
 /** STANDARD is an explicit low-risk classification; UNCLASSIFIED must fail closed. */
 enum class SecurityCategory {
