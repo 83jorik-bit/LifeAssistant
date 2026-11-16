@@ -18,8 +18,8 @@ on:
       artifact_type:
         description: 'Package to upload'
         type: choice
-        options: [apk, aab]
-        default: apk
+        options: [aab]
+        default: aab
       send_to_moderation:
         description: 'Submit the draft for moderation/publication'
         type: boolean
@@ -100,7 +100,7 @@ jobs:
         with:
           gradle-version: "8.7"
 
-      - name: Build signed AAB and APK
+      - name: Build signed AAB
         env:
           RELEASE_STORE_FILE: ${{ github.workspace }}/release.keystore
           RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
@@ -108,18 +108,15 @@ jobs:
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
           VERSION_CODE: ${{ inputs.version_code }}
           VERSION_NAME: ${{ inputs.version_name }}
-        run: gradle bundleRelease assembleRelease
+        run: gradle bundleRelease
 
       - name: Verify release signing
         if: ${{ inputs.publish }}
         shell: bash
         run: |
-          APK=app/build/outputs/apk/release/app-release.apk
-          if ! unzip -l "$APK" | grep -qiE "META-INF/.*\.(RSA|DSA|EC)$"; then
-            echo "Release APK appears unsigned; refusing to publish." >&2
-            exit 1
-          fi
-          "$JAVA_HOME/bin/keytool" -printcert -jarfile "$APK" | grep -iE "SHA256|Owner"
+          AAB=app/build/outputs/bundle/release/app-release.aab
+          jarsigner -verify "$AAB"
+          "$JAVA_HOME/bin/keytool" -printcert -jarfile "$AAB" | grep -iE "SHA256|Owner"
 
       - name: Publish to RuStore
         if: ${{ inputs.publish }}
@@ -127,19 +124,17 @@ jobs:
           RUSTORE_KEY_ID: ${{ secrets.RUSTORE_KEY_ID }}
           RUSTORE_PRIVATE_KEY: ${{ secrets.RUSTORE_PRIVATE_KEY }}
           PACKAGE_NAME: com.lifenavigator.app
-          ARTIFACT_TYPE: ${{ inputs.artifact_type }}
-          ARTIFACT_PATH: ${{ inputs.artifact_type == 'aab' && 'app/build/outputs/bundle/release/app-release.aab' || 'app/build/outputs/apk/release/app-release.apk' }}
+          ARTIFACT_TYPE: aab
+          ARTIFACT_PATH: app/build/outputs/bundle/release/app-release.aab
           SEND_TO_MODERATION: ${{ inputs.send_to_moderation }}
         run: bash scripts/rustore-publish.sh
 
-      - name: Upload artifacts for RuStore
+      - name: Upload AAB for RuStore
         uses: actions/upload-artifact@v4
         with:
           retention-days: 30
           name: rustore-release-${{ inputs.version_name }}
-          path: |
-            app/build/outputs/bundle/release/app-release.aab
-            app/build/outputs/apk/release/app-release.apk
+          path: app/build/outputs/bundle/release/app-release.aab
 
       - name: Remove temporary secrets from runner
         if: always()
