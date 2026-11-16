@@ -115,7 +115,7 @@ class ConfirmationManagerTest {
 
         assertTrue(cancelled is OperationManagerResult.Success)
         assertEquals(OperationStatus.CANCELLED, store.last?.status)
-        assertEquals(null, store.active)
+        assertNull(store.active)
     }
 
     @Test
@@ -203,7 +203,7 @@ class ConfirmationManagerTest {
 
         assertTrue(result is OperationManagerResult.StorageFailure)
         assertTrue(!store.legacyCleared)
-        assertEquals(null, store.active)
+        assertNull(store.active)
     }
 
     private fun prepareExpense(manager: ConfirmationManager): OperationManagerResult =
