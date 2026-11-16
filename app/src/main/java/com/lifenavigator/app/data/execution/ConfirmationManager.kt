@@ -195,7 +195,7 @@ class ConfirmationManager(
 
     @Synchronized
     fun cancel(sessionId: SessionId, operationId: OperationId): OperationManagerResult {
-        val operation = findOperation(operationId) ?: return OperationManagerResult.NoActiveOperation
+        val operation = findActiveOperation() ?: return OperationManagerResult.NoActiveOperation
         identityError(operation, sessionId, operationId)?.let { return it }
         if (operation.status != OperationStatus.AWAITING_CONFIRMATION &&
             operation.status != OperationStatus.CONFIRMED
@@ -205,7 +205,7 @@ class ConfirmationManager(
                 "AWAITING_CONFIRMATION or CONFIRMED"
             )
         }
-        return finish(operationId, OperationStatus.CANCELLED)
+        return finish(sessionId, operationId, OperationStatus.CANCELLED)
     }
 
     @Synchronized
@@ -227,7 +227,7 @@ class ConfirmationManager(
         if (operation.status != OperationStatus.RESULT_UNKNOWN) {
             return OperationManagerResult.InvalidState(operation, "RESULT_UNKNOWN")
         }
-        return finish(operationId, resolvedStatus)
+        return finish(sessionId, operationId, resolvedStatus)
     }
 
     private fun transition(
@@ -299,7 +299,7 @@ class ConfirmationManager(
         return null
     }
 
-    private fun findOperation(operationId: OperationId): PendingOperation? {
+    private fun findActiveOperation(): PendingOperation? {
         val operation = try {
             activeOperation()
         } catch (error: Exception) {
