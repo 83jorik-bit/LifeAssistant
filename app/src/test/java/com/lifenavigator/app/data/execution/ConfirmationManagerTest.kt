@@ -206,6 +206,67 @@ class ConfirmationManagerTest {
         assertNull(store.active)
     }
 
+
+    @Test
+    fun rejectionIsDistinctFromCancellationAndNeverExecutes() {
+        val store = InMemoryOperationStateStore()
+        val manager = ConfirmationManager(store)
+        val prepared = prepareExpense(manager) as OperationManagerResult.Success
+        val id = prepared.operation.request.operationId
+
+        val rejected = manager.reject(session, id)
+
+        assertTrue(rejected is OperationManagerResult.Success)
+        assertEquals(OperationStatus.REJECTED, store.last?.status)
+        assertNull(store.active)
+    }
+
+    @Test
+    fun expiredOperationIsClosedBeforeItCanBeConfirmed() {
+        var now = 100L
+        val store = InMemoryOperationStateStore()
+        val manager = ConfirmationManager(store, nowMillis = { now })
+        val prepared = prepareExpense(manager) as OperationManagerResult.Success
+        val operation = prepared.operation.copy(expiresAtEpochMillis = 200L)
+        store.active = operation
+
+        now = 200L
+        assertNull(manager.activeOperation())
+        assertEquals(OperationStatus.EXPIRED, store.last?.status)
+        assertNull(store.active)
+        assertTrue(manager.confirm(session, operation.request.operationId) is OperationManagerResult.NoActiveOperation)
+    }
+
+    @Test
+    fun expiredOperationIsPersistedBeforeActiveStateIsCleared() {
+        var now = 100L
+        val store = InMemoryOperationStateStore()
+        val manager = ConfirmationManager(store, nowMillis = { now })
+        val prepared = prepareExpense(manager) as OperationManagerResult.Success
+        store.active = prepared.operation.copy(expiresAtEpochMillis = 150L)
+        store.failWriteLast = true
+
+        now = 150L
+        val failure = runCatching { manager.activeOperation() }
+
+        assertTrue(failure.isFailure)
+        assertEquals(OperationStatus.AWAITING_CONFIRMATION, store.active?.status)
+    }
+
+    @Test
+    fun recoveryFailsClosedWhenUnknownResultCannotBePersisted() {
+        val store = InMemoryOperationStateStore()
+        val manager = ConfirmationManager(store)
+        val prepared = prepareExpense(manager) as OperationManagerResult.Success
+        store.active = prepared.operation.copy(status = OperationStatus.EXECUTING)
+        store.failWriteActive = true
+
+        val restarted = runCatching { ConfirmationManager(store) }
+
+        assertTrue(restarted.isFailure)
+        assertEquals(OperationStatus.EXECUTING, store.active?.status)
+    }
+
     private fun prepareExpense(manager: ConfirmationManager): OperationManagerResult =
         manager.prepare(
             sessionId = session,
@@ -222,9 +283,12 @@ class ConfirmationManagerTest {
         var last: PendingOperation? = null
         var legacy: LegacyPendingImport = LegacyPendingImport.None
         var legacyCleared: Boolean = false
+        var failWriteActive: Boolean = false
+        var failWriteLast: Boolean = false
 
         override fun readActive(): PendingOperation? = active
         override fun writeActive(operation: PendingOperation): Boolean {
+            if (failWriteActive) return false
             active = operation
             return true
         }
@@ -234,6 +298,7 @@ class ConfirmationManagerTest {
         }
         override fun readLast(): PendingOperation? = last
         override fun writeLast(operation: PendingOperation): Boolean {
+            if (failWriteLast) return false
             last = operation
             return true
         }
