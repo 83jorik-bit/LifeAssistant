@@ -176,6 +176,37 @@ class SecurityAuthorizationManagerTest {
         assertEquals(AuthenticationLevel.STRONG, (decision as SecurityDecision.RequiresStepUp).requiredLevel)
     }
 
+
+    @Test
+    fun standardMutationNeedsNeitherStepUpNorExplicitConfirmation() {
+        val actionId = ActionId("tasks.quick.create")
+        val registry = registryFor(
+            ActionDefinition(
+                id = actionId,
+                domain = ActionDomain.TASKS,
+                kind = ActionKind.MUTATION,
+                parameters = emptyList(),
+                confirmationPolicy = ConfirmationPolicy.NOT_REQUIRED,
+                securityCategory = SecurityCategory.STANDARD,
+                executorKey = "tasks"
+            )
+        )
+        val manager = SecurityAuthorizationManager(
+            registry = registry,
+            eventSink = SecurityEventSink { true }
+        )
+
+        val decision = manager.evaluate(
+            request(actionId, emptyMap()),
+            SecurityContext(
+                authorizedDomains = setOf(ActionDomain.TASKS),
+                authenticationLevel = AuthenticationLevel.NONE
+            )
+        )
+
+        assertEquals(SecurityDecision.Allowed, decision)
+    }
+
     @Test
     fun readOperationDoesNotRequireMutationConfirmation() {
         val actionId = ActionId("places.saved.list")
