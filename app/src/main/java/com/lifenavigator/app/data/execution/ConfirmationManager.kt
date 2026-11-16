@@ -222,7 +222,7 @@ class ConfirmationManager(
             resolvedStatus == OperationStatus.COMPLETED ||
                 resolvedStatus == OperationStatus.FAILED
         ) { "Unknown result can only be resolved as COMPLETED or FAILED" }
-        val operation = findOperation(operationId) ?: return OperationManagerResult.NoActiveOperation
+        val operation = findActiveOperation() ?: return OperationManagerResult.NoActiveOperation
         identityError(operation, sessionId, operationId)?.let { return it }
         if (operation.status != OperationStatus.RESULT_UNKNOWN) {
             return OperationManagerResult.InvalidState(operation, "RESULT_UNKNOWN")
@@ -236,7 +236,7 @@ class ConfirmationManager(
         expected: OperationStatus,
         target: OperationStatus
     ): OperationManagerResult {
-        val operation = findOperation(operationId) ?: return OperationManagerResult.NoActiveOperation
+        val operation = findActiveOperation() ?: return OperationManagerResult.NoActiveOperation
         identityError(operation, sessionId, operationId)?.let { return it }
         if (operation.status != expected) {
             return OperationManagerResult.InvalidState(operation, expected.name)
@@ -257,7 +257,7 @@ class ConfirmationManager(
         operationId: OperationId,
         target: OperationStatus
     ): OperationManagerResult {
-        val operation = findOperation(operationId) ?: return OperationManagerResult.NoActiveOperation
+        val operation = findActiveOperation() ?: return OperationManagerResult.NoActiveOperation
         identityError(operation, sessionId, operationId)?.let { return it }
         val allowed = when (target) {
             OperationStatus.COMPLETED, OperationStatus.FAILED ->
