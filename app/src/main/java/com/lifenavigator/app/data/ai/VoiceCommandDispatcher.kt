@@ -76,7 +76,7 @@ object VoiceCommandDispatcher {
     suspend fun dispatch(context: Context, rawText: String): String? =
         dispatchInternal(context, rawText, confirmationManager(context))
 
-    private fun dispatchInternal(
+    private suspend fun dispatchInternal(
         context: Context,
         rawText: String,
         manager: ConfirmationManager
@@ -311,7 +311,7 @@ object VoiceCommandDispatcher {
                     YearMonth.from(LocalDate.ofEpochDay(it.dateEpochDay)) == YearMonth.now()
             }
             if (candidates.isEmpty()) return "Не нашёл такую трату за текущий месяц. Ничего не удалено."
-            if (candidates.size > 1) return "Нашёл несколько трат по ${amount} ₽ в категории «${categoryTitle(categoryKey)}». Уточни дату в формате ДД.ММ."
+            if (candidates.size > 1) return "Нашёл несколько трат по ${amount} ₽ в категории «${categoryTitle(context, categoryKey)}». Уточни дату в формате ДД.ММ."
             val expense = candidates.single()
             return prepareOperation(
                 manager,
