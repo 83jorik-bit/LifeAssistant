@@ -67,7 +67,9 @@ enum class ConfirmationPolicy {
  * but the exact mapping of every action to a category remains an open decision.
  * SAM must not infer a category from the action name.
  */
+/** STANDARD is an explicit low-risk classification; UNCLASSIFIED must fail closed. */
 enum class SecurityCategory {
+    STANDARD,
     UNCLASSIFIED,
     A,
     B
