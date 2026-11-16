@@ -8,7 +8,7 @@ package com.lifenavigator.app.data.ai
  */
 sealed interface AssistantActionResult {
     data class Completed(val message: String) : AssistantActionResult
-    data class NeedsConfirmation(val message: String) : AssistantActionResult
+    data class NeedsConfirmation(val message: String, val operationId: String? = null) : AssistantActionResult
     data class NeedsClarification(val message: String) : AssistantActionResult
     data class Failed(val message: String) : AssistantActionResult
     data object NotHandled : AssistantActionResult

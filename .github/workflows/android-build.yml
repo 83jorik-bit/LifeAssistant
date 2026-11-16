@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: android-ci-${{ github.ref }}
@@ -28,27 +28,6 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Create local.properties from GitHub Secrets
-        env:
-          MAPKIT_API_KEY: ${{ secrets.MAPKIT_API_KEY }}
-          YANDEX_CLIENT_ID: ${{ secrets.YANDEX_CLIENT_ID }}
-          VK_CLIENT_ID: ${{ secrets.VK_CLIENT_ID }}
-          YANDEX_REDIRECT_URI: ${{ secrets.YANDEX_REDIRECT_URI }}
-          BACKEND_BASE_URL: ${{ secrets.BACKEND_BASE_URL }}
-          YANDEX_GPT_FOLDER_ID: ${{ secrets.YANDEX_GPT_FOLDER_ID }}
-          YANDEX_GPT_API_KEY: ${{ secrets.YANDEX_GPT_API_KEY }}
-        shell: bash
-        run: |
-          {
-            printf 'MAPKIT_API_KEY=%s\n' "$MAPKIT_API_KEY"
-            printf 'YANDEX_CLIENT_ID=%s\n' "$YANDEX_CLIENT_ID"
-            printf 'VK_CLIENT_ID=%s\n' "$VK_CLIENT_ID"
-            printf 'YANDEX_REDIRECT_URI=%s\n' "$YANDEX_REDIRECT_URI"
-            printf 'BACKEND_BASE_URL=%s\n' "$BACKEND_BASE_URL"
-            printf 'YANDEX_GPT_FOLDER_ID=%s\n' "$YANDEX_GPT_FOLDER_ID"
-            printf 'YANDEX_GPT_API_KEY=%s\n' "$YANDEX_GPT_API_KEY"
-          } > local.properties
-
       - name: Validate backend JavaScript syntax
         run: |
           for file in server/src/*.js server/src/routes/*.js; do
@@ -62,24 +41,5 @@ jobs:
           gradle-version: "8.7"
           cache-read-only: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
 
-      - name: Build debug APK
-        run: gradle assembleDebug
-
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-debug-apk
-          retention-days: 7
-          path: app/build/outputs/apk/debug/app-debug.apk
-
-      - name: Publish APK to GitHub Releases
-        if: github.event_name == 'workflow_dispatch'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          TAG="debug-${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" app/build/outputs/apk/debug/app-debug.apk \
-            --title "LifeAssistant debug build #${GITHUB_RUN_NUMBER}" \
-            --notes "Automatically built from commit ${GITHUB_SHA}. Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
-            --prerelease --target "${GITHUB_SHA}"
+      - name: Run Android unit tests
+        run: gradle :app:testDebugUnitTest

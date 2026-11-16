@@ -7,7 +7,7 @@ on:
     - cron: "17 3 * * *"
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches: [ main, architecture/execution-foundation ]
     paths:
       - ".github/workflows/cleanup-build-history.yml"
 
@@ -23,14 +23,13 @@ jobs:
   cleanup:
     runs-on: ubuntu-24.04
     steps:
-      - name: Remove excess build artifacts and old run records while keeping recent builds
+      - name: Delete all package artifacts and expire old run records
         uses: actions/github-script@v9
         with:
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const keepRunRecords = 10;
-            const keepArtifacts = 5;
             const maxAgeMs = 24 * 60 * 60 * 1000;
             const now = Date.now();
             const buildWorkflowNames = new Set(["Android CI", "Release for RuStore"]);
@@ -48,17 +47,11 @@ jobs:
               .filter(run => run.status === "completed" && buildWorkflowNames.has(run.name))
               .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
 
-            // Keep 10 run records for history, independently from APK artifact retention.
+            // Keep the 10 newest run records for audit history; remove every package artifact.
             const keepRunIds = new Set(completedRuns.slice(0, keepRunRecords).map(run => run.id));
 
-            // Preserve downloadable artifacts only for the 5 newest successful main-branch builds.
-            // This caps the expected APK footprint at roughly 5 x 76 MiB.
-            const successfulMainBuilds = completedRuns.filter(run =>
-              run.head_branch === "main" && run.conclusion === "success"
-            );
-            const keepArtifactRunIds = new Set(
-              successfulMainBuilds.slice(0, keepArtifacts).map(run => run.id)
-            );
+            // No APK/AAB build artifacts are retained in GitHub Actions.
+            const keepArtifactRunIds = new Set();
 
             let deletedArtifacts = 0;
             let deletedRuns = 0;
@@ -97,7 +90,7 @@ jobs:
               }
             }
 
-            // Keep the 10 newest debug prereleases; never touch production releases.
+            // Remove all temporary debug releases; production releases are untouched.
             const { data: allReleases } = await github.rest.repos.listReleases({
               owner, repo, per_page: 100
             });
@@ -106,10 +99,7 @@ jobs:
               .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
 
             let deletedReleases = 0;
-            for (const [index, release] of debugReleases.entries()) {
-              const ageMs = now - Date.parse(release.created_at);
-              if (ageMs <= maxAgeMs || index < keepRunRecords) continue;
-
+            for (const release of debugReleases) {
               try {
                 await github.rest.repos.deleteRelease({ owner, repo, release_id: release.id });
                 try {
@@ -123,4 +113,4 @@ jobs:
               }
             }
 
-            core.notice(`Cleanup complete. Kept ${Math.min(completedRuns.length, keepRunRecords)} run records and ${Math.min(successfulMainBuilds.length, keepArtifacts)} downloadable build artifacts; deleted ${deletedArtifacts} artifacts, ${deletedRuns} old run records, and ${deletedReleases} debug releases.`);
+            core.notice(`Cleanup complete. Kept ${Math.min(completedRuns.length, keepRunRecords)} recent run records and no package artifacts; deleted ${deletedArtifacts} artifacts, ${deletedRuns} old run records, and ${deletedReleases} debug releases.`);
