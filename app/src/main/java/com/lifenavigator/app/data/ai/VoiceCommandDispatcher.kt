@@ -179,9 +179,12 @@ object VoiceCommandDispatcher {
             if (matches.isEmpty()) return "Не нашёл активную задачу «$titleQuery». Ничего не изменено."
             if (matches.size > 1) return "Нашёл несколько похожих задач: " + matches.joinToString("; ") { it.title } + ". Уточни название."
             val task = matches.single()
-            taskStorage.update(task.copy(isCompleted = true))
-            TaskReminderScheduler.cancel(context, task)
-            return "Готово. Задача «${task.title}» отмечена выполненной."
+            return prepareOperation(
+                manager,
+                ActionId("task.complete"),
+                mapOf("taskId" to ActionParameterValue.Text(task.id)),
+                "Отметить задачу «${task.title}» выполненной? Скажи «да» для подтверждения или «отмена»."
+            )
         }
 
         val listCalendarCue = listOf("календарь", "расписание", "мои события", "что запланировано", "какие события").any(q::contains)
