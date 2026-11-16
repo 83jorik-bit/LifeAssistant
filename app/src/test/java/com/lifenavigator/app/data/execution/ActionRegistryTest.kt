@@ -35,13 +35,14 @@ class ActionRegistryTest {
         val result = registry.validate(request)
 
         assertTrue(result is ActionValidationResult.Valid)
+        val validResult = result as ActionValidationResult.Valid
         assertEquals(
             ConfirmationPolicy.REQUIRED,
-            (result as ActionValidationResult.Valid).definition.confirmationPolicy
+            validResult.definition.confirmationPolicy
         )
         assertEquals(
             SecurityCategory.UNCLASSIFIED,
-            result.definition.securityCategory
+            validResult.definition.securityCategory
         )
     }
 
